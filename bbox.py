@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 def bbox(str: str):
-    """Bounding box class for object detection."""
+    """Bounding box function for object detection."""
     model = YOLO("yolov8n-obb.pt")
     results = model(source=str, save =True, conf=0.5)
 
