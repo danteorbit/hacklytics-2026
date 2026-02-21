@@ -7,8 +7,7 @@ const navItems = [
   { label: "Home", path: "/" },
   { label: "Live Demo", path: "/demo" },
   { label: "How It Works", path: "/how-it-works" },
-  { label: "City View", path: "/city-view" },
-  { label: "Analytics", path: "/analytics" },
+  
   { label: "History", path: "/history" },
   { label: "API", path: "/api" },
   { label: "Model Lab", path: "/model-lab" },

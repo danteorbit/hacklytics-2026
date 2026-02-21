@@ -389,29 +389,7 @@ export function LiveDemo() {
               >
                 View in History &rarr;
               </button>
-              {selectedScan.location &&
-                selectedScan.location !== "Unknown Location" && (
-                  <button
-                    onClick={() => navigate("/city-view")}
-                    className="px-4 py-2 rounded-xl text-sm cursor-pointer transition-all duration-200"
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      color: "#888",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(34,197,94,0.3)";
-                      e.currentTarget.style.color = "#4ade80";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor =
-                        "rgba(255,255,255,0.06)";
-                      e.currentTarget.style.color = "#888";
-                    }}
-                  >
-                    View on City Map &rarr;
-                  </button>
-                )}
+              {/* City view removed */}
             </div>
           </motion.div>
         )}

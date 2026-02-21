@@ -150,8 +150,7 @@ export function AdminPage() {
               (loss & accuracy over epochs)
             </li>
             <li className="flex items-center gap-2">
-              <span style={{ color: "#facc15" }}>&#x2022;</span> Confusion
-              matrix with real detection results
+              <span style={{ color: "#facc15" }}>&#x2022;</span> Confusion matrix with real detection results
             </li>
             <li className="flex items-center gap-2">
               <span style={{ color: "#facc15" }}>&#x2022;</span> Sample
@@ -189,11 +188,7 @@ export function AdminPage() {
               label: "Architecture",
               value: "YOLOv8-nano (planned)",
             },
-            {
-              icon: Cpu,
-              label: "Training GPU",
-              value: "NVIDIA A100 (planned)",
-            },
+            { icon: Cpu, label: "Training GPU", value: "NVIDIA A100 (planned)" },
             {
               icon: HardDrive,
               label: "Model Size",
@@ -282,8 +277,7 @@ export function AdminPage() {
             className="text-white mb-4"
             style={{ fontFamily: "'Space Grotesk', sans-serif" }}
           >
-            Your Dataset ({totalImages} {totalImages === 1 ? "image" : "images"}
-            )
+            Your Dataset ({totalImages} {totalImages === 1 ? "image" : "images"})
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {scans.map((scan) => (
