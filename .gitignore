@@ -1,0 +1,5 @@
+# environments
+.venv
+
+# models
+yolov8*.pt
