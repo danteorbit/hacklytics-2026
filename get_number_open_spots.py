@@ -1,6 +1,6 @@
 import math
 
-def get_open_spots(A_park: int, A_cavg: int, n_cars: int, width_cavg: int) -> int:
+def get_number_open_spots(A_park: int, A_cavg: int, n_cars: int, width_cavg: int) -> int:
     """
     Returns number of open spots for parking spaces in single image
     Args:
