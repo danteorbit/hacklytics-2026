@@ -12,5 +12,5 @@ def bbox(str: str):
         
             width = x2 - x1
             height = y2 - y1
-            area = width * height
-    return area
+            A_park = width * height
+    return A_park
