@@ -7,6 +7,160 @@ Track B is more ambitious and will be weighted favorably in judging — but a hi
 
 ![alt text](image.png)
 
+---
+
+## Quick Start
+
+### Prerequisites
+
+| Tool | Version |
+|---|---|
+| Python | 3.13+ |
+| Node.js | 18+ |
+| pnpm | 9+ |
+
+### 1. Clone & Enter the Repo
+
+```bash
+git clone https://github.com/danteorbit/hacklytics-2026.git
+cd hacklytics-2026
+```
+
+### 2. Start the Backend (Python / Flask)
+
+```bash
+cd backend
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+python app.py
+```
+
+The backend API starts on **http://localhost:5000**.
+
+> **Note:** The SegFormer model checkpoint (`segformer-epoch=11-val_loss=0.17.ckpt`) must be placed in `backend/models/`. It is not tracked by Git due to its size.
+
+### 3. Start the Frontend (React / Vite)
+
+Open a **second terminal**:
+
+```bash
+cd frontend/src
+pnpm install
+pnpm dev
+```
+
+The frontend starts on **http://localhost:5173** and automatically proxies `/api` requests to the backend on port 5000.
+
+### 4. Use the App
+
+1. Open **http://localhost:5173** in your browser.
+2. Go to **Live Demo**.
+3. Upload a parking lot image (or pick a sample).
+4. The image is sent to the backend, which runs the SegFormer segmentation model and a civil-engineering grid layout algorithm to count parking spots.
+5. The annotated result image appears in the "After" panel.
+
+---
+
+## Project Structure
+
+```
+hacklytics-2026/
+│
+├── backend/                          # Python backend — Flask API + ML pipeline
+│   ├── app.py                        # Flask server: /api/analyze, /api/results, /api/health
+│   ├── snappark.py                   # SegFormer model definition + ParkingPredictor class
+│   ├── parking_processor.py          # Civil engineering grid layout (spot tiling, GSD, blobs)
+│   ├── parking_batch_processor.py    # Batch processing for multiple images at once
+│   ├── cv_labeling.py                # Classical CV contour labeling utility
+│   ├── get_number_open_spots.py      # Heuristic open-spot calculator
+│   ├── requirements.txt              # Python dependencies (flask, opencv, torch, etc.)
+│   ├── models/                       # Model weights (.ckpt, .pt) — git-ignored
+│   ├── uploads/                      # Temp storage for user-uploaded images
+│   └── results/                      # Processed output images served back to frontend
+│
+├── frontend/                         # React + Vite frontend
+│   ├── server.js                     # Production Express server (proxies /api to backend)
+│   ├── package.json                  # Frontend dependencies
+│   └── src/
+│       ├── main.tsx                  # React entry point
+│       ├── vite.config.ts            # Vite config (dev proxy → localhost:5000)
+│       ├── server.js                 # Production server (same as parent, for deploy)
+│       ├── styles/                   # CSS (Tailwind, fonts, theming)
+│       └── app/
+│           ├── App.tsx               # Root component with ScanProvider
+│           ├── routes.ts             # React Router routes
+│           └── components/
+│               ├── scan-context.tsx   # Global state — uploads images to /api/analyze
+│               ├── live-demo.tsx      # Main demo page — upload, sample, before/after
+│               ├── image-comparison.tsx # Before/After side-by-side view
+│               ├── image-upload.tsx   # File upload button
+│               ├── home-page.tsx      # Landing page
+│               ├── how-it-works-page.tsx # Technical explainer
+│               ├── upload-history.tsx # History of scanned images
+│               ├── api-docs.tsx       # API documentation page
+│               ├── admin-page.tsx     # Model Lab / metrics dashboard
+│               ├── ask-chat.tsx       # AI chat assistant
+│               ├── layout.tsx         # Page layout / navigation shell
+│               └── ui/               # Reusable UI primitives (shadcn/radix)
+│
+├── pred_test.ipynb                   # Jupyter notebook for experimentation
+├── parkingSegmentation.ipynb         # Model training notebook
+├── pyproject.toml                    # Python project metadata
+├── requirements.txt                  # Root-level pip requirements
+└── README.md                         # This file
+```
+
+### Key Files Explained
+
+| File | Purpose |
+|---|---|
+| `backend/app.py` | Flask API. Receives an image via `POST /api/analyze`, runs SegFormer + grid layout, returns the annotated image URL and spot count as JSON. |
+| `backend/snappark.py` | Defines `SegFormerLightning` (the PyTorch Lightning model) and `ParkingPredictor` (loads checkpoint, runs inference, refines mask). |
+| `backend/parking_processor.py` | The core algorithm. Uses Hough lines to estimate GSD (ground sampling distance), then tiles each parking blob with standard 8.7 ft × 19 ft spots respecting aisle widths. |
+| `frontend/src/app/components/scan-context.tsx` | React context that holds all scan state. When `submitScan()` is called, it `POST`s the image to `/api/analyze` and stores the returned result image + spot count. |
+| `frontend/src/app/components/live-demo.tsx` | The main user-facing page. Handles file uploads, sample image selection, and displays a before/after modal with real backend results. |
+
+---
+
+## API Reference
+
+### `GET /api/health`
+
+Returns backend status.
+
+```json
+{ "status": "ok", "model_loaded": true }
+```
+
+### `POST /api/analyze`
+
+Upload a parking lot image for analysis.
+
+**Request:** `multipart/form-data` with field `image` (jpg, jpeg, or png).
+
+**Response:**
+
+```json
+{
+  "job_id": "a1b2c3d4",
+  "total_spots": 142,
+  "result_image": "/api/results/a1b2c3d4_result.jpg",
+  "mask_image": "/api/results/a1b2c3d4_mask.jpg"
+}
+```
+
+### `GET /api/results/<filename>`
+
+Serves a processed result image.
+
+---
+
 ## Suggested Data Sources
 
 Sourcing and combining data is part of the challenge. Here are starting points:
@@ -44,30 +198,33 @@ These are suggestions, not requirements — surprise us:
 
 - *Include a clear evaluation section showing your accuracy metrics on at least 2 distinct geographic areas*
 
-Finding a parking spot shouldn't be a guessing game. **SnapPark** tackles the ambitious Track B challenge by generating comprehensive parking insights across urban geographies. By combining an intuitive, dark-themed user interface with a powerful YOLOv8 computer vision pipeline, we've built a scalable ecosystem designed to map and count surface parking lots across city-wide grids in Atlanta.
-
----------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 🎯 What We Built
-
-At the core of SnapPark is our **Image Processing Engine powered by YOLOv8**. Users simply upload an image, and the system generates a side-by-side comparison. The processed image automatically identifies, bounds, and masks the available spaces that are not taken up by a car.
-
-### 🔍 Core Features & Navigation
-* **Home:** The main dashboard featuring a seamless, drag-and-drop image upload portal.
-* **Live Demo:** Don't have an image on hand? Test the system immediately using pre-loaded sample parking lot images to see the before/after results and spot counts in action.
-* **How It Works:** A technical breakdown page detailing the system architecture, explaining our approach to image segmentation, masking, and object detection.
-* **History:** A personalized log of your previously scanned lots. Keep track of past images, historical spot counts, and timestamped entries.
-* **API:** Comprehensive documentation for developers detailing how to integrate with our detection endpoints to send images and receive spot coordinates.
-* **Model Lab:** A backend-style view displaying the health of our detection model, including accuracy metrics, dataset sizes, and performance analytics.
-* **Ask Chat:** An integrated AI chat assistant where users can ask contextual questions about the platform, detection logic, or parking analytics.
+Finding a parking spot shouldn't be a guessing game. **SnapPark** tackles the ambitious Track B challenge by generating comprehensive parking insights across urban geographies. By combining an intuitive, dark-themed user interface with a SegFormer semantic-segmentation model and a civil-engineering grid-layout algorithm, we've built a scalable system designed to map and count surface parking lots across city-wide areas in Atlanta.
 
 ---
 
-## 🧠 Technical Approach & Data Fusion
+## What We Built
 
-To tackle the complexities of city-wide mapping, we implemented a robust object detection pipeline. 
+Users upload a parking lot image and SnapPark returns a side-by-side comparison: the original image alongside an annotated overlay showing every detected parking spot tiled to scale. The pipeline uses a **SegFormer (nvidia/mit-b0)** model fine-tuned on parking-lot satellite imagery to produce pixel-level masks, then applies a **civil-engineering grid-layout algorithm** that tiles standard US parking dimensions (8.7 ft × 19 ft spots, 24 ft aisles) onto each detected lot contour. Ground sampling distance (GSD) is auto-estimated via Hough line detection.
 
-* **Model Architecture:** We utilized **YOLOv8** for direct object detection, optimizing it to identify individual vehicles and bound empty surface spots from aerial and context-enriched imagery.
-* **UI & Frontend Prototype:** Rapidly prototyped and generated using **Figma Make**, styled with **Tailwind CSS** to ensure a polished, production-ready dark mode aesthetic.
-* **Data Sources Utilized:** *(Note: Update these with the exact datasets your team used)*
-  * **A Pipeline and NIR-Enhanced Dataset for Parking Lot Segmentation | url:{https://arxiv.org/pdf/2412.13179%7D}:** Leveraged for robust satellite image/mask pairs, pulled specific satellite tiles for testing.
+### Core Features
+| Page | Description |
+|---|---|
+| **Home** | Landing page with drag-and-drop image upload. |
+| **Live Demo** | Upload your own image or use pre-loaded samples; see before/after results and spot counts instantly. |
+| **How It Works** | Technical breakdown of the segmentation, masking, and grid-layout pipeline. |
+| **History** | Timestamped log of previously scanned lots and their results. |
+| **API** | Developer documentation for the `/api/analyze` endpoint. |
+| **Model Lab** | Dashboard showing model health, accuracy metrics, and dataset stats. |
+| **Ask Chat** | AI assistant for questions about detection logic or parking analytics. |
+
+---
+
+## Technical Approach
+
+* **Segmentation Model:** SegFormer (nvidia/mit-b0) trained with PyTorch Lightning. Checkpoint: `segformer-epoch=11-val_loss=0.17.ckpt`.
+* **Grid Layout Algorithm:** Detects parking-lot contours, estimates GSD from Hough lines, then tiles each contour with standard-dimension parking spots at the optimal rotation angle.
+* **Backend:** Flask API (`backend/app.py`) orchestrates model inference and grid analysis.
+* **Frontend:** React + Vite + TypeScript + Tailwind CSS. Designed in Figma, polished dark-mode aesthetic.
+* **Data Sources:**
+  * **ParkSeg12k** — 12,617 satellite image/mask pairs. [GitHub](https://github.com/UTEL-UIUC/ParkSeg12k)
+  * **A Pipeline and NIR-Enhanced Dataset for Parking Lot Segmentation** — [Paper](https://arxiv.org/pdf/2412.13179)

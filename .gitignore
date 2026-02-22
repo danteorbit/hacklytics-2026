@@ -1,12 +1,26 @@
 # environments
 .venv
+__pycache__/
 
-# model
+# model weights (large files)
 *.pt
+*.ckpt
+
+# backend runtime dirs
+backend/uploads/
+backend/results/
+batch_images_input/
+batch_images_output/
+batch_images_superimposed/
+batch_images_empty_spots_only/
+lightning_logs/
 
 # frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
 frontend/src/node_modules/
 frontend/src/dist/
+node_modules/
 
 # frontend environment variables
 frontend/src/.env
@@ -14,3 +28,7 @@ frontend/src/.env.local
 
 # vite cache
 frontend/src/.vite/
+
+# temp test images
+*.jpg
+!frontend/**/*.jpg

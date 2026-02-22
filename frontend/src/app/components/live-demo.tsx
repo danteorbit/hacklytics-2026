@@ -34,7 +34,7 @@ const SAMPLE_IMAGES = [
 ];
 
 export function LiveDemo() {
-  const { scans, addScan } = useScans();
+  const { scans, addScan, submitScan } = useScans();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,7 +72,9 @@ export function LiveDemo() {
     if (pendingItems.length === 0) return;
     const loc = locationInput.trim();
     for (const item of pendingItems) {
-      addScan(item.url, item.name, loc);
+      const scan = addScan(item.url, item.name, loc);
+      // Auto-submit to backend for processing
+      submitScan(scan.id);
     }
     setShowLocationPrompt(false);
     setLocationInput("");
@@ -82,7 +84,9 @@ export function LiveDemo() {
   const handleSkip = () => {
     if (pendingItems.length === 0) return;
     for (const item of pendingItems) {
-      addScan(item.url, item.name, "");
+      const scan = addScan(item.url, item.name, "");
+      // Auto-submit to backend for processing
+      submitScan(scan.id);
     }
     setShowLocationPrompt(false);
     setLocationInput("");
@@ -303,19 +307,33 @@ export function LiveDemo() {
                       className="text-xs px-2.5 py-1 rounded-full"
                       style={{
                         background:
-                          scan.status === "pending"
-                            ? "rgba(250,204,21,0.15)"
-                            : "rgba(74,222,128,0.15)",
+                          scan.status === "processing"
+                            ? "rgba(59,130,246,0.15)"
+                            : scan.status === "pending"
+                              ? "rgba(250,204,21,0.15)"
+                              : scan.status === "error"
+                                ? "rgba(239,68,68,0.15)"
+                                : "rgba(74,222,128,0.15)",
                         color:
-                          scan.status === "pending" ? "#facc15" : "#4ade80",
+                          scan.status === "processing"
+                            ? "#3b82f6"
+                            : scan.status === "pending"
+                              ? "#facc15"
+                              : scan.status === "error"
+                                ? "#ef4444"
+                                : "#4ade80",
                         border:
-                          scan.status === "pending"
-                            ? "1px solid rgba(250,204,21,0.3)"
-                            : "1px solid rgba(74,222,128,0.3)",
+                          scan.status === "processing"
+                            ? "1px solid rgba(59,130,246,0.3)"
+                            : scan.status === "pending"
+                              ? "1px solid rgba(250,204,21,0.3)"
+                              : scan.status === "error"
+                                ? "1px solid rgba(239,68,68,0.3)"
+                                : "1px solid rgba(74,222,128,0.3)",
                         backdropFilter: "blur(8px)",
                       }}
                     >
-                      {scan.status === "pending" ? "Pending" : "Processed"}
+                      {scan.status === "processing" ? "Processing..." : scan.status === "pending" ? "Pending" : scan.status === "error" ? "Error" : `${scan.totalSpots ?? 0} Spots`}
                     </span>
                   </div>
                   {/* Hover overlay */}
@@ -671,8 +689,8 @@ export function LiveDemo() {
                       <div
                         className="w-2.5 h-2.5 rounded-full"
                         style={{
-                          background: "#22c55e",
-                          boxShadow: "0 0 8px rgba(34, 197, 94, 0.5)",
+                          background: previewScan.resultImage ? "#22c55e" : "#555",
+                          boxShadow: previewScan.resultImage ? "0 0 8px rgba(34, 197, 94, 0.5)" : "none",
                         }}
                       />
                       <span
@@ -688,16 +706,33 @@ export function LiveDemo() {
                     <div
                       className="relative rounded-2xl overflow-hidden"
                       style={{
-                        border: "1px solid rgba(34, 197, 94, 0.2)",
+                        border: previewScan.resultImage
+                          ? "1px solid rgba(34, 197, 94, 0.2)"
+                          : "1px solid rgba(255,255,255,0.08)",
                         boxShadow:
                           "0 8px 40px rgba(0,0,0,0.4), 0 0 40px rgba(34, 197, 94, 0.06)",
                       }}
                     >
-                      <img
-                        src={previewScan.image}
-                        alt="Detected"
-                        className="w-full h-auto object-cover"
-                      />
+                      {previewScan.resultImage ? (
+                        <img
+                          src={previewScan.resultImage}
+                          alt="Detected parking spots"
+                          className="w-full h-auto object-cover"
+                        />
+                      ) : previewScan.status === "processing" ? (
+                        <div className="w-full flex items-center justify-center py-20" style={{ background: "rgba(0,0,0,0.3)" }}>
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#4ade80", borderTopColor: "transparent" }} />
+                            <span className="text-sm" style={{ color: "#888" }}>Analyzing parking lot...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full flex items-center justify-center py-20" style={{ background: "rgba(0,0,0,0.3)" }}>
+                          <span className="text-sm" style={{ color: "#666" }}>
+                            {previewScan.error || "Awaiting analysis"}
+                          </span>
+                        </div>
+                      )}
                       <div
                         className="absolute bottom-0 left-0 right-0 p-4"
                         style={{
@@ -709,7 +744,9 @@ export function LiveDemo() {
                           className="text-sm tracking-wide"
                           style={{ color: "#4ade80" }}
                         >
-                          Detected Open Spots
+                          {previewScan.resultImage
+                            ? `${previewScan.totalSpots ?? 0} Parking Spots Detected`
+                            : "Detected Open Spots"}
                         </span>
                       </div>
                     </div>
@@ -728,26 +765,39 @@ export function LiveDemo() {
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{
-                        background: "rgba(250,204,21,0.1)",
-                        border: "1px solid rgba(250,204,21,0.2)",
+                        background: previewScan.status === "processed"
+                          ? "rgba(34,197,94,0.1)"
+                          : "rgba(250,204,21,0.1)",
+                        border: previewScan.status === "processed"
+                          ? "1px solid rgba(34,197,94,0.2)"
+                          : "1px solid rgba(250,204,21,0.2)",
                       }}
                     >
-                      <Info className="w-5 h-5" style={{ color: "#facc15" }} />
+                      <Info className="w-5 h-5" style={{ color: previewScan.status === "processed" ? "#4ade80" : "#facc15" }} />
                     </div>
                     <p className="text-sm" style={{ color: "#666" }}>
-                      The "After" image will show highlighted open spots once the
-                      detection pipeline is connected.
+                      {previewScan.status === "processed"
+                        ? `Analysis complete — ${previewScan.totalSpots} parking spots identified.`
+                        : previewScan.status === "processing"
+                          ? "Image is being analyzed by the SnapPark backend..."
+                          : previewScan.error
+                            ? `Error: ${previewScan.error}`
+                            : "Awaiting analysis from the backend."}
                     </p>
                   </div>
                   <span
                     className="flex-shrink-0 px-4 py-1.5 rounded-full text-xs tracking-wide"
                     style={{
-                      background: "rgba(34, 197, 94, 0.1)",
-                      border: "1px solid rgba(34, 197, 94, 0.25)",
-                      color: "#4ade80",
+                      background: previewScan.status === "processed"
+                        ? "rgba(34, 197, 94, 0.1)"
+                        : "rgba(250,204,21,0.1)",
+                      border: previewScan.status === "processed"
+                        ? "1px solid rgba(34, 197, 94, 0.25)"
+                        : "1px solid rgba(250,204,21,0.25)",
+                      color: previewScan.status === "processed" ? "#4ade80" : "#facc15",
                     }}
                   >
-                    Awaiting Detection
+                    {previewScan.status === "processed" ? "Complete" : previewScan.status === "processing" ? "Processing..." : "Awaiting Detection"}
                   </span>
                 </div>
               </div>

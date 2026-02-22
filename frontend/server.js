@@ -1,13 +1,21 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
 const DIST = path.join(__dirname, "dist");
+
+// ── Proxy /api requests to the Python backend ────────────────────────────────
+app.use(
+  "/api",
+  createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true })
+);
 
 // ── Serve static assets from the Vite build output ──────────────────────────
 app.use(express.static(DIST));
