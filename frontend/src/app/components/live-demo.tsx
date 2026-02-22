@@ -19,18 +19,18 @@ const SAMPLE_IMAGES = [
     url: "https://images.unsplash.com/photo-1640675321117-20cf2ebaf9e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhZXJpYWwlMjBwYXJraW5nJTIwbG90JTIwY2FycyUyMHNhdGVsbGl0ZSUyMHZpZXd8ZW58MXx8fHwxNzcxNjY0ODgyfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
     label: "Aerial Parking Lot",
   },
-  {
-    url: "https://images.unsplash.com/photo-1767096684353-a979c6fe02ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYXJraW5nJTIwZ2FyYWdlJTIwcm9vZnRvcCUyMGNhcnMlMjBvdmVyaGVhZHxlbnwxfHx8fDE3NzE2NjQ4ODJ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    label: "Parking Garage",
-  },
-  {
-    url: "https://images.unsplash.com/photo-1697761221129-fdf528507890?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzaG9wcGluZyUyMG1hbGwlMjBwYXJraW5nJTIwbG90JTIwYWVyaWFsJTIwZHJvbmV8ZW58MXx8fHwxNzcxNjY0ODgzfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    label: "Shopping Mall Lot",
-  },
-  {
-    url: "https://images.unsplash.com/photo-1703743617211-22b35f9978fc?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvdXRkb29yJTIwcGFya2luZyUyMGxvdCUyMHVyYmFuJTIwY2Fyc3xlbnwxfHx8fDE3NzE2NjQ4ODZ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    label: "Urban Parking Lot",
-  },
+  { url: "/samples/1.jpg", label: "Parking Lot 1" },
+  { url: "/samples/2.jpg", label: "Parking Lot 2" },
+  { url: "/samples/3.jpg", label: "Parking Lot 3" },
+  { url: "/samples/4.jpg", label: "Parking Lot 4" },
+  { url: "/samples/5.jpg", label: "Parking Lot 5" },
+  { url: "/samples/6.jpg", label: "Parking Lot 6" },
+  { url: "/samples/7.jpg", label: "Parking Lot 7" },
+  { url: "/samples/8.jpg", label: "Parking Lot 8" },
+  { url: "/samples/9.jpg", label: "Parking Lot 9" },
+  { url: "/samples/10.jpg", label: "Parking Lot 10" },
+  { url: "/samples/11.jpg", label: "Parking Lot 11" },
+  { url: "/samples/12.jpg", label: "Parking Lot 12" },
 ];
 
 export function LiveDemo() {

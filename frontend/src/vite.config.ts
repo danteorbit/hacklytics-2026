@@ -21,6 +21,7 @@ export default defineConfig({
   assetsInclude: ["**/*.svg", "**/*.csv"],
 
   server: {
+    allowedHosts: [".ngrok-free.dev", ".ngrok.io"],
     proxy: {
       "/api": {
         target: "http://localhost:5000",
