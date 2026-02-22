@@ -5,6 +5,8 @@ __pycache__/
 # model weights (large files)
 *.pt
 *.ckpt
+# Allow the production SegFormer checkpoint (42 MB, under GitHub 100 MB limit)
+!backend/models/segformer-epoch=11-val_loss=0.17.ckpt
 
 # backend runtime dirs
 backend/uploads/

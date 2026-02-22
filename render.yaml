@@ -1,0 +1,38 @@
+# ── Render Blueprint ──────────────────────────────────────────────────────────
+# Deploy with:  https://render.com/deploy  →  paste your repo URL
+# Or connect the repo and Render will auto-detect this file.
+
+services:
+  # ── Python Backend (Flask + SegFormer model) ──────────────────────────────
+  - type: web
+    name: snappark-api
+    runtime: python
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+    plan: free
+
+  # ── Node Frontend (Vite build + Express proxy) ────────────────────────────
+  - type: web
+    name: snappark-web
+    runtime: node
+    region: oregon
+    rootDir: frontend/src
+    buildCommand: pnpm install && pnpm build
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: BACKEND_URL
+        fromService:
+          name: snappark-api
+          type: web
+          property: hostport
+      - key: PORT
+        value: "3000"
+    plan: free
