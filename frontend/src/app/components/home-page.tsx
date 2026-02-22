@@ -13,12 +13,10 @@ import {
   Images,
   Plus,
   Trash2,
-  AlertCircle,
+  Send,
 } from "lucide-react";
 import { useScans, type Scan } from "./scan-context";
 import { useNavigate } from "react-router";
-
-const MAX_IMAGES = 6;
 
 export function HomePage() {
   const [locationInput, setLocationInput] = useState("");
@@ -28,23 +26,18 @@ export function HomePage() {
   >([]);
   const [previewScan, setPreviewScan] = useState<Scan | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { scans, addScan, removeScan } = useScans();
+  const { scans, addScan, removeScan, submitScan, submitAllScans } = useScans();
   const navigate = useNavigate();
 
-  const remaining = MAX_IMAGES - scans.length;
-  const isFull = remaining <= 0;
   const hasScans = scans.length > 0;
+  const pendingCount = scans.filter((s) => s.status === "pending").length;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Clamp to remaining capacity
-    const allowed = Math.min(files.length, remaining);
-    if (allowed <= 0) return;
-
     const pending: { url: string; name: string }[] = [];
-    for (let i = 0; i < allowed; i++) {
+    for (let i = 0; i < files.length; i++) {
       pending.push({ url: URL.createObjectURL(files[i]), name: files[i].name });
     }
     setPendingFiles(pending);
@@ -129,7 +122,7 @@ export function HomePage() {
               <span className="text-white">Park</span>
             </h1>
             <p className="text-sm" style={{ color: "#666" }}>
-              {scans.length} / {MAX_IMAGES} slots used
+              {scans.length} {scans.length === 1 ? "image" : "images"} uploaded
             </p>
           </motion.div>
         )}
@@ -146,56 +139,39 @@ export function HomePage() {
           className="hidden"
         />
 
-        {isFull ? (
-          <div
-            className="flex items-center gap-3 px-6 py-3.5 rounded-2xl"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="group relative flex items-center gap-3 px-8 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden text-white"
+          style={{
+            background: "linear-gradient(135deg, #16a34a, #22c55e)",
+            boxShadow:
+              "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow =
+              "0 8px 30px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow =
+              "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)";
+          }}
+        >
+          {hasScans ? (
+            <Plus className="w-5 h-5 relative z-10" />
+          ) : (
+            <Upload className="w-5 h-5 relative z-10" />
+          )}
+          <span
+            className="relative z-10"
+            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
           >
-            <AlertCircle className="w-5 h-5" style={{ color: "#facc15" }} />
-            <span className="text-sm" style={{ color: "#999" }}>
-              All {MAX_IMAGES} slots filled — remove an image to add a new one
-            </span>
-          </div>
-        ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="group relative flex items-center gap-3 px-8 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden text-white"
-            style={{
-              background: "linear-gradient(135deg, #16a34a, #22c55e)",
-              boxShadow:
-                "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow =
-                "0 8px 30px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow =
-                "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)";
-            }}
-          >
-            {hasScans ? (
-              <Plus className="w-5 h-5 relative z-10" />
-            ) : (
-              <Upload className="w-5 h-5 relative z-10" />
-            )}
-            <span
-              className="relative z-10"
-              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-            >
-              {hasScans
-                ? `Add Images (${remaining} left)`
-                : "Select Images"}
-            </span>
-          </button>
-        )}
+            {hasScans ? "Add Images" : "Upload Your Images"}
+          </span>
+        </button>
 
         {!hasScans && (
           <p className="text-center max-w-sm text-sm" style={{ color: "#555" }}>
-            Upload up to {MAX_IMAGES} parking lot photos to get started
+            Upload photos to get started
           </p>
         )}
       </div>
@@ -349,55 +325,62 @@ export function HomePage() {
                 <span className="text-sm" style={{ color: "#888" }}>
                   Your Uploads
                 </span>
-                {/* Capacity dots */}
-                <div className="flex items-center gap-1 ml-2">
-                  {Array.from({ length: MAX_IMAGES }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-2 h-2 rounded-full transition-all duration-300"
-                      style={{
-                        background:
-                          i < scans.length
-                            ? "#4ade80"
-                            : "rgba(255,255,255,0.08)",
-                        boxShadow:
-                          i < scans.length
-                            ? "0 0 6px rgba(74,222,128,0.4)"
-                            : "none",
-                      }}
-                    />
-                  ))}
-                </div>
+                <span className="text-xs" style={{ color: "#555" }}>
+                  {scans.length} {scans.length === 1 ? "image" : "images"}
+                </span>
               </div>
-              <button
-                onClick={() => navigate("/history")}
-                className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200"
-                style={{
-                  color: "#666",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "#4ade80";
-                  e.currentTarget.style.borderColor = "rgba(34,197,94,0.3)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "#666";
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
-                }}
-              >
-                View Full History &rarr;
-              </button>
+              <div className="flex items-center gap-2">
+                {pendingCount > 0 && (
+                  <button
+                    onClick={submitAllScans}
+                    className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200 text-white"
+                    style={{
+                      background: "linear-gradient(135deg, #16a34a, #22c55e)",
+                      boxShadow: "0 2px 12px rgba(34, 197, 94, 0.25)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 18px rgba(34, 197, 94, 0.35)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow =
+                        "0 2px 12px rgba(34, 197, 94, 0.25)";
+                    }}
+                  >
+                    <Send className="w-3 h-3" />
+                    Submit All ({pendingCount})
+                  </button>
+                )}
+                <button
+                  onClick={() => navigate("/history")}
+                  className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200"
+                  style={{
+                    color: "#666",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#4ade80";
+                    e.currentTarget.style.borderColor = "rgba(34,197,94,0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#666";
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                  }}
+                >
+                  View Full History &rarr;
+                </button>
+              </div>
             </div>
 
-            {/* Adaptive grid — always 3 columns on desktop, nice for 1-6 items */}
+            {/* Scrollable gallery grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {scans.slice(0, MAX_IMAGES).map((scan, i) => (
+              {scans.map((scan, i) => (
                 <motion.div
                   key={scan.id}
                   initial={{ opacity: 0, scale: 0.92 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.35, delay: i * 0.05 }}
+                  transition={{ duration: 0.35, delay: Math.min(i * 0.05, 0.3) }}
                   className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
                   style={{
                     background: "rgba(255,255,255,0.02)",
@@ -487,6 +470,22 @@ export function HomePage() {
                       >
                         <Eye className="w-5 h-5 text-white" />
                       </div>
+                      {scan.status === "pending" && (
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer"
+                          style={{
+                            background: "rgba(34,197,94,0.25)",
+                            backdropFilter: "blur(8px)",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            submitScan(scan.id);
+                          }}
+                          title="Submit for detection"
+                        >
+                          <Send className="w-5 h-5" style={{ color: "#4ade80" }} />
+                        </div>
+                      )}
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer"
                         style={{
@@ -530,49 +529,6 @@ export function HomePage() {
                   </div>
                 </motion.div>
               ))}
-
-              {/* "Add more" card — only if under capacity */}
-              {!isFull && (
-                <motion.div
-                  key="add-card"
-                  initial={{ opacity: 0, scale: 0.92 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{
-                    duration: 0.35,
-                    delay: scans.length * 0.05,
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="group cursor-pointer rounded-2xl flex flex-col items-center justify-center gap-3 aspect-[4/3] transition-all duration-300 hover:-translate-y-1"
-                  style={{
-                    background: "rgba(34,197,94,0.03)",
-                    border: "1px dashed rgba(34,197,94,0.2)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(34,197,94,0.5)";
-                    e.currentTarget.style.background = "rgba(34,197,94,0.06)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(34,197,94,0.2)";
-                    e.currentTarget.style.background = "rgba(34,197,94,0.03)";
-                  }}
-                >
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{
-                      background: "rgba(74,222,128,0.1)",
-                      border: "1px solid rgba(74,222,128,0.2)",
-                    }}
-                  >
-                    <Plus className="w-6 h-6" style={{ color: "#4ade80" }} />
-                  </div>
-                  <span className="text-sm" style={{ color: "#4ade80" }}>
-                    Add More
-                  </span>
-                  <span className="text-xs" style={{ color: "#555" }}>
-                    {remaining} {remaining === 1 ? "slot" : "slots"} remaining
-                  </span>
-                </motion.div>
-              )}
             </div>
           </motion.div>
         )}
@@ -833,7 +789,7 @@ export function HomePage() {
                   step: "1",
                   title: "Upload Images",
                   description:
-                    "Select up to 6 photos of any parking lot — aerial, street-level, or security camera.",
+                    "Select photos of any parking lot — aerial, street-level, or security camera.",
                   icon: Camera,
                 },
                 {

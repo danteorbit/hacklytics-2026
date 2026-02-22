@@ -17,6 +17,8 @@ interface ScanContextType {
   scans: Scan[];
   addScan: (image: string, fileName: string, location: string) => Scan;
   removeScan: (id: string) => void;
+  submitScan: (id: string) => void;
+  submitAllScans: () => void;
   clearScans: () => void;
 }
 
@@ -25,29 +27,34 @@ const ScanContext = createContext<ScanContextType | null>(null);
 export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [scans, setScans] = useState<Scan[]>([]);
 
-  const addScan = useCallback(
-    (image: string, fileName: string, location: string): Scan => {
-      const now = new Date();
-      const timestamp = now.toISOString().replace("T", " ").slice(0, 19);
-      const newScan: Scan = {
-        id: `scan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        image,
-        fileName: fileName || "uploaded-image.jpg",
-        location: location || "Unknown Location",
-        timestamp,
-        status: "pending",
-        openSpots: null,
-        totalSpots: null,
-        confidence: null,
-      };
-      setScans((prev) => [newScan, ...prev]);
-      return newScan;
-    },
-    [],
-  );
+  const addScan = useCallback((image: string, fileName: string, location: string): Scan => {
+    const now = new Date();
+    const timestamp = now.toISOString().replace("T", " ").slice(0, 19);
+    const newScan: Scan = {
+      id: `scan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      image,
+      fileName: fileName || "uploaded-image.jpg",
+      location: location || "Unknown Location",
+      timestamp,
+      status: "pending",
+      openSpots: null,
+      totalSpots: null,
+      confidence: null,
+    };
+    setScans((prev) => [newScan, ...prev]);
+    return newScan;
+  }, []);
 
   const removeScan = useCallback((id: string) => {
     setScans((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const submitScan = useCallback((id: string) => {
+    setScans((prev) => prev.map((s) => (s.id === id ? { ...s, status: "processed" } : s)));
+  }, []);
+
+  const submitAllScans = useCallback(() => {
+    setScans((prev) => prev.map((s) => ({ ...s, status: "processed" })));
   }, []);
 
   const clearScans = useCallback(() => {
@@ -55,7 +62,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ScanContext.Provider value={{ scans, addScan, removeScan, clearScans }}>
+    <ScanContext.Provider value={{ scans, addScan, removeScan, submitScan, submitAllScans, clearScans }}>
       {children}
     </ScanContext.Provider>
   );
