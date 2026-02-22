@@ -21,10 +21,10 @@ const DIST = path.join(__dirname, "dist");
 
 // ── Proxy /api requests to the Python backend ────────────────────────────────
 app.use(
-  "/api",
   createProxyMiddleware({
     target: BACKEND_URL,
     changeOrigin: true,
+    pathFilter: "/api",
     // Model inference can take 10-30s on free-tier; give it plenty of time
     proxyTimeout: 300_000,
     timeout: 300_000,

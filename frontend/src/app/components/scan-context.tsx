@@ -2,6 +2,13 @@ import { createContext, useContext, useState, useCallback, useRef } from "react"
 
 const API_BASE = "/api";
 
+export interface VehicleCounts {
+  car: number;
+  truck: number;
+  semi: number;
+  total: number;
+}
+
 export interface Scan {
   id: string;
   image: string;
@@ -13,6 +20,7 @@ export interface Scan {
   resultImage: string | null;
   openSpots: number | null;
   totalSpots: number | null;
+  vehicles: VehicleCounts | null;
   confidence: number | null;
   error: string | null;
 }
@@ -48,6 +56,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       resultImage: null,
       openSpots: null,
       totalSpots: null,
+      vehicles: null,
       confidence: null,
       error: null,
     };
@@ -127,7 +136,8 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
               status: "processed" as const,
               resultImage: result.result_image,
               totalSpots: result.total_spots,
-              openSpots: result.total_spots,
+              openSpots: result.open_spots ?? result.total_spots,
+              vehicles: result.vehicles ?? null,
               error: null,
             };
             scanMapRef.current.set(id, updated);

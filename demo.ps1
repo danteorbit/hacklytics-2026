@@ -58,12 +58,26 @@ if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Check ngrok auth
-$ngrokConfig = ngrok config check 2>&1
-if ($ngrokConfig -match "ERR" -or $LASTEXITCODE -ne 0) {
+# Check ngrok auth — create config dir if missing
+$ngrokConfigDir = Join-Path $env:LOCALAPPDATA "ngrok"
+if (-not (Test-Path $ngrokConfigDir)) {
+    New-Item -ItemType Directory -Path $ngrokConfigDir -Force | Out-Null
+}
+$ngrokConfigFile = Join-Path $ngrokConfigDir "ngrok.yml"
+if (-not (Test-Path $ngrokConfigFile)) {
+    # Create a minimal config so ngrok doesn't error
+    Set-Content -Path $ngrokConfigFile -Value "version: `"2`""
+}
+
+$needsAuth = $true
+try {
+    $configContent = Get-Content $ngrokConfigFile -Raw
+    if ($configContent -match "authtoken:") { $needsAuth = $false }
+} catch {}
+
+if ($needsAuth) {
     Log "WARNING: ngrok authtoken not set." "Yellow"
-    Log "Sign up free at https://ngrok.com and run:" "Yellow"
-    Log "  ngrok config add-authtoken YOUR_TOKEN" "Yellow"
+    Log "Sign up free at https://ngrok.com/signup and copy your token from the dashboard." "Yellow"
     Log ""
     $token = Read-Host "Paste your ngrok authtoken here (or press Enter to skip)"
     if ($token) {
@@ -78,8 +92,10 @@ Log "Clearing ports 5000 and 3000..."
 foreach ($port in @(5000, 3000)) {
     $pids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty OwningProcess -Unique
-    foreach ($pid in $pids) {
-        taskkill /PID $pid /F 2>$null | Out-Null
+    foreach ($procId in $pids) {
+        $ErrorActionPreference = 'SilentlyContinue'
+        taskkill /PID $procId /F 2>$null | Out-Null
+        $ErrorActionPreference = 'Stop'
     }
 }
 Start-Sleep -Seconds 1
@@ -147,9 +163,11 @@ try {
 
 # ── 5. Start ngrok tunnel ───────────────────────────────────────────────────
 Log "Starting ngrok tunnel..."
+$ngrokExe = (Get-Command ngrok).Source
 $ngrokJob = Start-Job -ScriptBlock {
-    ngrok http 3000 --log stdout 2>&1
-}
+    param($exe)
+    & $exe http 3000 --log stdout 2>&1
+} -ArgumentList $ngrokExe
 
 # Wait for ngrok to establish tunnel and get the public URL
 Start-Sleep -Seconds 4
@@ -206,7 +224,7 @@ try {
     foreach ($port in @(5000, 3000)) {
         $pids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
                 Select-Object -ExpandProperty OwningProcess -Unique
-        foreach ($pid in $pids) { taskkill /PID $pid /F 2>$null | Out-Null }
+        foreach ($procId in $pids) { $ErrorActionPreference = 'SilentlyContinue'; taskkill /PID $procId /F 2>$null | Out-Null; $ErrorActionPreference = 'Stop' }
     }
     # Kill ngrok
     Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force

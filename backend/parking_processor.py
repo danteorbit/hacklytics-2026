@@ -8,6 +8,304 @@ from snappark import ParkingPredictor
 # 1. HELPER FUNCTIONS & GSD
 # ==========================================
 
+
+def _is_parking_surface(img_bgr, blob_mask, min_edge_ratio=0.02, min_std=18):
+    """
+    Determine whether a blob is likely real parking (cars, lane markings,
+    varied texture) vs. a building roof / uniform surface.
+
+    Uses two complementary signals:
+      1) Edge density  – Canny edges inside the blob as a fraction of blob area.
+         Parking lots have lane markings, car outlines → high edge ratio.
+         Roofs are smooth → very low edge ratio.
+      2) Intensity std-dev – std of grayscale pixels inside the blob.
+         Parking lots are heterogeneous → high std.
+         Roofs are uniform → low std.
+
+    Returns True if the blob looks like a real parking surface.
+    """
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+
+    # Compute stats only inside the blob
+    pixels = gray[blob_mask > 0]
+    if len(pixels) == 0:
+        return False
+    std_val = float(np.std(pixels))
+
+    # Edge density
+    edges = cv2.Canny(gray, 50, 150)
+    edges_in_blob = cv2.bitwise_and(edges, edges, mask=blob_mask)
+    edge_pixels = np.count_nonzero(edges_in_blob)
+    blob_area = np.count_nonzero(blob_mask)
+    edge_ratio = edge_pixels / max(blob_area, 1)
+
+    is_parking = (edge_ratio >= min_edge_ratio) or (std_val >= min_std)
+    print(
+        f"[TEXTURE] std={std_val:.1f}, edge_ratio={edge_ratio:.4f} "
+        f"=> {'PARKING' if is_parking else 'ROOF/BUILDING (skipped)'}"
+    )
+    return is_parking
+
+
+def _remove_smooth_regions(img_bgr, mask, window=31, std_thresh=12):
+    """
+    Remove uniform/smooth regions from the mask using local texture analysis.
+
+    Building roofs appear as large smooth areas from above, while real
+    parking lots have cars, lane markings, shadows, etc. that create local
+    variance.
+
+    Strategy:
+      1) Compute local standard deviation in a sliding window.
+      2) Threshold to identify "textured" pixels.
+      3) AND with the original mask to keep only textured areas.
+      4) Morphological cleanup to remove small noise patches and fill gaps
+         in legitimate parking areas.
+    """
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    # Local mean and local mean-of-squares → local variance
+    ksize = window
+    local_mean = cv2.blur(gray, (ksize, ksize))
+    local_sq_mean = cv2.blur(gray * gray, (ksize, ksize))
+    local_var = local_sq_mean - local_mean * local_mean
+    local_std = np.sqrt(np.maximum(local_var, 0))
+
+    # Binary texture mask: 1 where texture is high enough
+    textured = (local_std >= std_thresh).astype(np.uint8) * 255
+
+    # Also add edge-dense regions (catch lane markings even in low-
+    # variance areas like empty asphalt)
+    edges = cv2.Canny(gray.astype(np.uint8), 50, 150)
+    # Dilate edges so they fill out to spot-sized regions
+    edge_dilated = cv2.dilate(edges, np.ones((window, window), np.uint8))
+    textured = cv2.bitwise_or(textured, edge_dilated)
+
+    # AND with the original SegFormer mask
+    refined = cv2.bitwise_and(mask, textured)
+
+    # Morphological cleanup: close small gaps, then remove tiny fragments
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+    refined = cv2.morphologyEx(refined, cv2.MORPH_CLOSE, kernel_close)
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    refined = cv2.morphologyEx(refined, cv2.MORPH_OPEN, kernel_open)
+
+    before_nz = np.count_nonzero(mask)
+    after_nz = np.count_nonzero(refined)
+    removed_pct = (1 - after_nz / max(before_nz, 1)) * 100
+    print(
+        f"[TEXTURE] Smooth-region removal: {before_nz}->{after_nz} px "
+        f"({removed_pct:.1f}% removed, window={window}, std_thresh={std_thresh})"
+    )
+    return refined
+
+
+# ==========================================
+# 1b. VEHICLE DETECTION (BW + ASPECT RATIO)
+# ==========================================
+
+# Typical top-down vehicle dimensions (feet)
+VEHICLE_TYPES = {
+    "car": {
+        "w_ft": (5.0, 7.0),
+        "l_ft": (12.0, 17.0),
+        "ratio": (1.6, 3.0),
+        "color": (0, 255, 0),
+    },
+    "truck": {
+        "w_ft": (6.0, 8.5),
+        "l_ft": (17.0, 24.0),
+        "ratio": (2.2, 3.8),
+        "color": (0, 200, 255),
+    },
+    "semi": {
+        "w_ft": (8.0, 10.0),
+        "l_ft": (40.0, 75.0),
+        "ratio": (4.5, 10.0),
+        "color": (0, 0, 255),
+    },
+}
+
+
+def detect_vehicles(img_bgr, parking_mask, gsd_ft_px):
+    """
+    Detect and classify vehicles in parking areas using BW thresholding
+    and bounding-box aspect-ratio matching.
+
+    Approach:
+      1) Convert parking ROI to grayscale
+      2) Adaptive threshold to isolate dark objects (vehicles) on lighter pavement
+      3) Find contours, compute min-area bounding rect
+      4) Convert pixel dimensions → feet using GSD
+      5) Classify by aspect ratio and size: car, truck, or semi
+
+    Returns:
+      vehicles: list of dicts with keys: type, center, box_pts, w_ft, l_ft
+      counts:   dict {"car": N, "truck": N, "semi": N, "total": N}
+    """
+    px_per_ft = 1.0 / gsd_ft_px
+
+    # Size bounds in pixels
+    min_vehicle_area_ft2 = 5.0 * 10.0  # ~50 sqft minimum (small car)
+    max_vehicle_area_ft2 = 10.0 * 75.0  # ~750 sqft maximum (long semi)
+    min_area_px = min_vehicle_area_ft2 * (px_per_ft**2)
+    max_area_px = max_vehicle_area_ft2 * (px_per_ft**2)
+
+    # 1) Grayscale inside the parking mask only
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    roi_gray = cv2.bitwise_and(gray, gray, mask=parking_mask)
+
+    # 2) Adaptive threshold — vehicles appear darker than pavement
+    # Use Gaussian adaptive to handle varying brightness across the lot
+    block_size = max(int(15 * px_per_ft) | 1, 3)  # ~15 ft window, must be odd
+    if block_size % 2 == 0:
+        block_size += 1
+    bw = cv2.adaptiveThreshold(
+        roi_gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        block_size,
+        8,
+    )
+
+    # Only keep detections inside the parking mask
+    bw = cv2.bitwise_and(bw, parking_mask)
+
+    # Light morphological cleanup: close small gaps in vehicle bodies,
+    # then open to remove noise
+    k_close = max(int(1.5 * px_per_ft), 2)
+    k_open = max(int(0.5 * px_per_ft), 2)
+    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, np.ones((k_close, k_close), np.uint8))
+    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((k_open, k_open), np.uint8))
+
+    # 3) Find contours
+    contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    vehicles = []
+    counts = {"car": 0, "truck": 0, "semi": 0, "unknown": 0, "total": 0}
+
+    for cnt in contours:
+        area_px = cv2.contourArea(cnt)
+        if area_px < min_area_px or area_px > max_area_px:
+            continue
+
+        # Min-area bounding rectangle
+        rect = cv2.minAreaRect(cnt)
+        (cx, cy), (rw, rh), angle = rect
+        if rw < 1 or rh < 1:
+            continue
+
+        # Always make long side = length, short side = width
+        w_px = min(rw, rh)
+        l_px = max(rw, rh)
+        w_ft = w_px * gsd_ft_px
+        l_ft = l_px * gsd_ft_px
+        ratio = l_ft / max(w_ft, 0.1)
+
+        # 4) Classify by aspect ratio AND absolute dimensions
+        vtype = _classify_vehicle(w_ft, l_ft, ratio)
+        if vtype is None:
+            continue
+
+        box_pts = cv2.boxPoints(rect).astype(np.int32)
+        vehicles.append(
+            {
+                "type": vtype,
+                "center": (int(cx), int(cy)),
+                "box_pts": box_pts,
+                "w_ft": round(w_ft, 1),
+                "l_ft": round(l_ft, 1),
+                "ratio": round(ratio, 2),
+            }
+        )
+        counts[vtype] += 1
+        counts["total"] += 1
+
+    print(
+        f"[VEHICLES] Detected {counts['total']} vehicles: "
+        f"{counts['car']} cars, {counts['truck']} trucks, {counts['semi']} semis"
+    )
+    return vehicles, counts
+
+
+def _classify_vehicle(w_ft, l_ft, ratio):
+    """Classify a bounding box as car, truck, or semi using best-fit scoring.
+
+    Scores each vehicle type by how close the object's dimensions are to the
+    centre of that type's expected ranges.  The type with the lowest normalised
+    distance wins, provided the object is within the toleranced envelope.
+    """
+    best_type = None
+    best_score = float("inf")
+
+    for vtype, spec in VEHICLE_TYPES.items():
+        r_lo, r_hi = spec["ratio"]
+        w_lo, w_hi = spec["w_ft"]
+        l_lo, l_hi = spec["l_ft"]
+
+        # Must be within the toleranced envelope (±30%)
+        in_ratio = r_lo * 0.7 <= ratio <= r_hi * 1.3
+        in_width = w_lo * 0.7 <= w_ft <= w_hi * 1.3
+        in_length = l_lo * 0.7 <= l_ft <= l_hi * 1.3
+
+        # Semi/truck require BOTH width AND length (distinctive shapes);
+        # cars only need one dimension to match (more varied sizes)
+        if vtype in ("semi", "truck"):
+            if not (in_ratio and in_width and in_length):
+                continue
+        else:
+            if not (in_ratio and (in_width or in_length)):
+                continue
+
+        # Score = sum of squared normalised deviations from each range centre
+        r_mid = (r_lo + r_hi) / 2
+        w_mid = (w_lo + w_hi) / 2
+        l_mid = (l_lo + l_hi) / 2
+        score = (
+            ((ratio - r_mid) / max(r_hi - r_lo, 0.1)) ** 2
+            + ((w_ft - w_mid) / max(w_hi - w_lo, 0.1)) ** 2
+            + ((l_ft - l_mid) / max(l_hi - l_lo, 0.1)) ** 2
+        )
+
+        if score < best_score:
+            best_score = score
+            best_type = vtype
+
+    if best_type is not None:
+        return best_type
+
+    # Fallback: if ratio is reasonable for a vehicle but doesn't match any
+    # specific type, still count it as a car if dimensions are vaguely right
+    if 1.3 <= ratio <= 4.0 and 4.0 <= w_ft <= 10.0 and 8.0 <= l_ft <= 25.0:
+        return "car"
+
+    return None
+
+
+def draw_vehicles(canvas, vehicles):
+    """Draw detected vehicles on the image with color-coded bounding boxes."""
+    for v in vehicles:
+        color = VEHICLE_TYPES.get(v["type"], {}).get("color", (128, 128, 128))
+        cv2.drawContours(canvas, [v["box_pts"]], 0, color, 2)
+
+        # Small label
+        cx, cy = v["center"]
+        label = v["type"][0].upper()  # C / T / S
+        cv2.putText(
+            canvas,
+            label,
+            (cx - 4, cy + 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            (0, 0, 0),
+            2,
+        )
+        cv2.putText(
+            canvas, label, (cx - 4, cy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1
+        )
+
+
 # Standard US parking dimensions (feet)
 STD_SPOT_W_FT = 8.5  # spot width
 STD_SPOT_L_FT = 18.0  # spot length (perpendicular parking)
@@ -144,7 +442,7 @@ def estimate_gsd(img_bgr, mask, expected_spots_hint=None, fallback=GSD_DEFAULT):
                 gsd = float(np.clip(gsd_candidate, GSD_MIN, GSD_MAX))
                 print(
                     f"[GSD] Estimated from line spacing: {spacing_px:.1f} px "
-                    f"→ GSD={gsd:.3f} ft/px"
+                    f"=> GSD={gsd:.3f} ft/px"
                 )
                 return gsd
 
@@ -199,7 +497,7 @@ def estimate_gsd(img_bgr, mask, expected_spots_hint=None, fallback=GSD_DEFAULT):
         print(
             f"[GSD] Area-based fallback: blob_narrow={narrow_px:.0f}px, "
             f"blob_wide={wide_px:.0f}px, n_rows={n_rows}, "
-            f"est_depth={est_narrow_ft:.0f}ft → GSD={gsd:.3f} ft/px "
+            f"est_depth={est_narrow_ft:.0f}ft => GSD={gsd:.3f} ft/px "
             f"(est_spots≈{mask_area_px * gsd * gsd / SQFT_PER_SPOT:.0f})"
         )
         return gsd
@@ -401,6 +699,9 @@ def process_parking_image_civil(
     _, binary_mask = cv2.threshold(mask_gray, 127, 255, cv2.THRESH_BINARY)
     print(f"[CIVIL] mask nonzero={np.count_nonzero(binary_mask)}")
 
+    # Remove smooth/uniform regions (building roofs) from the mask
+    binary_mask = _remove_smooth_regions(img_bgr, binary_mask)
+
     # Skip erosion — SegFormer masks are already clean and erosion
     # removes valid edge pixels that reduce spot detection at boundaries.
     eroded_mask = binary_mask
@@ -447,13 +748,36 @@ def process_parking_image_civil(
         total_spots += n
         print(f"[CIVIL] Lot {blob_id}: area={blob.area_sqft:,} sqft, {n} spots")
 
+    # ── Vehicle detection (BW + aspect ratio) ──────────────────────────────
+    vehicles, vehicle_counts = detect_vehicles(img_bgr, eroded_mask, active_gsd)
+    draw_vehicles(result_img, vehicles)
+
+    occupied = vehicle_counts["total"]
+    open_spots = max(0, total_spots - occupied)
+
     # Draw total count at top
     font = cv2.FONT_HERSHEY_SIMPLEX
-    label = f"{total_spots} Parking Spots Detected."
-    cv2.putText(result_img, label, (20, 40), font, 0.9, (0, 0, 0), 5)
-    cv2.putText(result_img, label, (20, 40), font, 0.9, (0, 255, 255), 2)
+    h_img = img_bgr.shape[0]
+    # Line 1: spots
+    label1 = f"{total_spots} Parking Spots Detected."
+    cv2.putText(result_img, label1, (20, 40), font, 0.9, (0, 0, 0), 5)
+    cv2.putText(result_img, label1, (20, 40), font, 0.9, (0, 255, 255), 2)
+    # Line 2: vehicles
+    label2 = (
+        f"Vehicles: {occupied} ({vehicle_counts['car']}C "
+        f"{vehicle_counts['truck']}T {vehicle_counts['semi']}S) | "
+        f"Open: {open_spots}"
+    )
+    cv2.putText(result_img, label2, (20, 75), font, 0.7, (0, 0, 0), 4)
+    cv2.putText(result_img, label2, (20, 75), font, 0.7, (0, 255, 200), 2)
 
-    return result_img, total_spots
+    # Legend at bottom
+    y_leg = h_img - 20
+    cv2.putText(result_img, "C=Car", (20, y_leg), font, 0.45, (0, 255, 0), 1)
+    cv2.putText(result_img, "T=Truck", (100, y_leg), font, 0.45, (0, 200, 255), 1)
+    cv2.putText(result_img, "S=Semi", (200, y_leg), font, 0.45, (0, 0, 255), 1)
+
+    return result_img, total_spots, vehicle_counts, open_spots
 
 
 # ==========================================
@@ -505,11 +829,18 @@ class ParkingLotAnalyzer:
                 mask_gray, (w_img, h_img), interpolation=cv2.INTER_NEAREST
             )
 
-        annotated_img, total_spots = process_parking_image_civil(
-            img_bgr, mask_gray, gsd_ft_px=gsd_ft_px, auto_gsd=auto_gsd
+        annotated_img, total_spots, vehicle_counts, open_spots = (
+            process_parking_image_civil(
+                img_bgr, mask_gray, gsd_ft_px=gsd_ft_px, auto_gsd=auto_gsd
+            )
         )
 
         os.makedirs(os.path.dirname(output_image_path) or ".", exist_ok=True)
         cv2.imwrite(output_image_path, annotated_img)
 
-        return {"total_spots": total_spots, "output_image_path": output_image_path}
+        return {
+            "total_spots": total_spots,
+            "output_image_path": output_image_path,
+            "vehicles": vehicle_counts,
+            "open_spots": open_spots,
+        }

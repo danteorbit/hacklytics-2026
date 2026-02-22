@@ -751,7 +751,7 @@ export function HomePage() {
                           style={{ color: "#4ade80" }}
                         >
                           {previewScan.resultImage
-                            ? `${previewScan.totalSpots ?? 0} Parking Spots Detected`
+                            ? `${previewScan.totalSpots ?? 0} Spots | ${previewScan.vehicles ? `${previewScan.vehicles.total} Vehicles` : ""} | ${previewScan.openSpots ?? 0} Open`
                             : "Detected Open Spots"}
                         </span>
                       </div>
@@ -769,7 +769,7 @@ export function HomePage() {
                 >
                   <p className="text-sm" style={{ color: "#666" }}>
                     {previewScan.status === "processed"
-                      ? `Analysis complete — ${previewScan.totalSpots} parking spots identified.`
+                      ? `Analysis complete — ${previewScan.totalSpots} spots, ${previewScan.vehicles?.total ?? 0} vehicles (${previewScan.vehicles?.car ?? 0} cars, ${previewScan.vehicles?.truck ?? 0} trucks, ${previewScan.vehicles?.semi ?? 0} semis), ${previewScan.openSpots ?? 0} open.`
                       : previewScan.status === "processing"
                         ? "Image is being analyzed by the SnapPark backend..."
                         : previewScan.error

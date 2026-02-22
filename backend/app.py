@@ -162,10 +162,10 @@ def analyze():
         )
 
         # 5. Run the civil engineering grid analysis
-        annotated_img, total_spots = process_parking_image_civil(
+        annotated_img, total_spots, vehicle_counts, open_spots = process_parking_image_civil(
             img_bgr, mask_gray, gsd_ft_px=0.5, auto_gsd=True
         )
-        print(f"[DEBUG] total_spots={total_spots}")
+        print(f"[DEBUG] total_spots={total_spots}, vehicles={vehicle_counts}, open={open_spots}")
 
         # 6. Save the annotated result
         result_filename = f"{job_id}_result.jpg"
@@ -181,6 +181,8 @@ def analyze():
             {
                 "job_id": job_id,
                 "total_spots": total_spots,
+                "open_spots": open_spots,
+                "vehicles": vehicle_counts,
                 "result_image": f"/api/results/{result_filename}",
                 "mask_image": f"/api/results/{mask_filename}",
             }

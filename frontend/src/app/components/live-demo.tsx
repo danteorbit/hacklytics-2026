@@ -334,7 +334,7 @@ export function LiveDemo() {
                         backdropFilter: "blur(8px)",
                       }}
                     >
-                      {scan.status === "processing" ? "Processing..." : scan.status === "pending" ? "Pending" : scan.status === "error" ? "Error" : `${scan.totalSpots ?? 0} Spots`}
+                      {scan.status === "processing" ? "Processing..." : scan.status === "pending" ? "Pending" : scan.status === "error" ? "Error" : `${scan.totalSpots ?? 0} Spots | ${scan.openSpots ?? 0} Open`}
                     </span>
                   </div>
                   {/* Hover overlay */}
@@ -746,7 +746,7 @@ export function LiveDemo() {
                           style={{ color: "#4ade80" }}
                         >
                           {previewScan.resultImage
-                            ? `${previewScan.totalSpots ?? 0} Parking Spots Detected`
+                            ? `${previewScan.totalSpots ?? 0} Spots | ${previewScan.vehicles ? `${previewScan.vehicles.total} Vehicles (${previewScan.vehicles.car}C ${previewScan.vehicles.truck}T ${previewScan.vehicles.semi}S)` : ""} | ${previewScan.openSpots ?? 0} Open`
                             : "Detected Open Spots"}
                         </span>
                       </div>
@@ -778,7 +778,7 @@ export function LiveDemo() {
                     </div>
                     <p className="text-sm" style={{ color: "#666" }}>
                       {previewScan.status === "processed"
-                        ? `Analysis complete — ${previewScan.totalSpots} parking spots identified.`
+                        ? `Analysis complete — ${previewScan.totalSpots} spots, ${previewScan.vehicles?.total ?? 0} vehicles detected (${previewScan.vehicles?.car ?? 0} cars, ${previewScan.vehicles?.truck ?? 0} trucks, ${previewScan.vehicles?.semi ?? 0} semis), ${previewScan.openSpots ?? 0} open.`
                         : previewScan.status === "processing"
                           ? "Image is being analyzed by the SnapPark backend..."
                           : previewScan.error
