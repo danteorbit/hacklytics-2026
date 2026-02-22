@@ -9,11 +9,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render private-service discovery gives "host:port" without a scheme.
-// Ensure we always have a full URL.
+// Render web-service discovery gives just a hostname (e.g. "snappark-api.onrender.com")
+// without a scheme. Web services use HTTPS.
 let rawBackend = process.env.BACKEND_URL || "http://localhost:5000";
 if (rawBackend && !rawBackend.startsWith("http")) {
-  rawBackend = `http://${rawBackend}`;
+  rawBackend = `https://${rawBackend}`;
 }
 const BACKEND_URL = rawBackend;
 console.log(`[proxy] BACKEND_URL = ${BACKEND_URL}`);
