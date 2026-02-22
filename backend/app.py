@@ -28,10 +28,19 @@ os.makedirs(RESULTS_FOLDER, exist_ok=True)
 app = Flask(__name__)
 CORS(app)  # Allow the frontend (on a different port) to call the API
 
-# ── Load Model Once ───────────────────────────────────────────────────────────
-print("Initializing SnapPark model...")
-predictor = ParkingPredictor(MODEL_PATH)
-print("Model ready.")
+# ── Lazy Model Loading ────────────────────────────────────────────────────────
+# Load model on first request so the health-check endpoint can respond
+# immediately and Render doesn't kill the service during cold-start.
+_predictor = None
+
+
+def get_predictor():
+    global _predictor
+    if _predictor is None:
+        print("Initializing SnapPark model (first request)...")
+        _predictor = ParkingPredictor(MODEL_PATH)
+        print("Model ready.")
+    return _predictor
 
 
 def allowed_file(filename):
@@ -43,8 +52,8 @@ def allowed_file(filename):
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    """Health check endpoint."""
-    return jsonify({"status": "ok", "model_loaded": True})
+    """Health check endpoint — responds immediately even before model is loaded."""
+    return jsonify({"status": "ok", "model_loaded": _predictor is not None})
 
 
 @app.route("/api/analyze", methods=["POST"])
@@ -82,7 +91,7 @@ def analyze():
         h_img, w_img = img_bgr.shape[:2]
 
         # 2. Predict mask using the SegFormer model
-        pil_mask = predictor.predict(input_path)
+        pil_mask = get_predictor().predict(input_path)
         mask_arr = np.array(pil_mask)
         print(
             f"[DEBUG] mask_arr shape={mask_arr.shape}, dtype={mask_arr.dtype}, "

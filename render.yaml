@@ -8,8 +8,8 @@ services:
     name: snappark-api
     runtime: python
     region: oregon
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --preload
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
