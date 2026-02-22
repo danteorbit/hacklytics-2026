@@ -9,11 +9,13 @@ services:
     runtime: python
     region: oregon
     buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r backend/requirements.txt
-    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --preload
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300 --preload
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.8"
+      - key: TRANSFORMERS_OFFLINE
+        value: "1"
     plan: free
 
   # ── Node Frontend (Vite build + Express proxy) ────────────────────────────

@@ -28,19 +28,51 @@ os.makedirs(RESULTS_FOLDER, exist_ok=True)
 app = Flask(__name__)
 CORS(app)  # Allow the frontend (on a different port) to call the API
 
-# ── Lazy Model Loading ────────────────────────────────────────────────────────
-# Load model on first request so the health-check endpoint can respond
-# immediately and Render doesn't kill the service during cold-start.
+# ── Background Model Preloading ───────────────────────────────────────────────
+# Start loading model in a background thread at startup so the health-check
+# endpoint responds immediately while the model loads concurrently.
+import threading
+
 _predictor = None
+_predictor_lock = threading.Lock()
+_predictor_error = None
+
+
+def _preload_model():
+    """Load the model in a background thread."""
+    global _predictor, _predictor_error
+    try:
+        print("[preload] Starting model load in background thread...")
+        pred = ParkingPredictor(MODEL_PATH)
+        with _predictor_lock:
+            _predictor = pred
+        print("[preload] Model ready.")
+    except Exception as e:
+        _predictor_error = str(e)
+        print(f"[preload] ERROR loading model: {e}")
+
+
+# Start preloading immediately (non-blocking)
+threading.Thread(target=_preload_model, daemon=True).start()
 
 
 def get_predictor():
+    """Get the predictor, waiting for background load to finish if needed."""
     global _predictor
-    if _predictor is None:
-        print("Initializing SnapPark model (first request)...")
-        _predictor = ParkingPredictor(MODEL_PATH)
-        print("Model ready.")
-    return _predictor
+    if _predictor is not None:
+        return _predictor
+    if _predictor_error:
+        raise RuntimeError(f"Model failed to load: {_predictor_error}")
+    # Background thread still loading — wait for it
+    print("[get_predictor] Waiting for background model load to finish...")
+    for _ in range(600):  # up to 5 minutes
+        import time
+        time.sleep(0.5)
+        if _predictor is not None:
+            return _predictor
+        if _predictor_error:
+            raise RuntimeError(f"Model failed to load: {_predictor_error}")
+    raise RuntimeError("Model load timed out (5 min)")
 
 
 def allowed_file(filename):
@@ -52,8 +84,12 @@ def allowed_file(filename):
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    """Health check endpoint — responds immediately even before model is loaded."""
-    return jsonify({"status": "ok", "model_loaded": _predictor is not None})
+    """Health check — responds immediately. Model loads in background."""
+    return jsonify({
+        "status": "ok",
+        "model_loaded": _predictor is not None,
+        "model_error": _predictor_error,
+    })
 
 
 @app.route("/api/analyze", methods=["POST"])

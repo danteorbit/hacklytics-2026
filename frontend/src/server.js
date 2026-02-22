@@ -26,8 +26,8 @@ app.use(
     target: BACKEND_URL,
     changeOrigin: true,
     // Model inference can take 10-30s on free-tier; give it plenty of time
-    proxyTimeout: 120_000,
-    timeout: 120_000,
+    proxyTimeout: 300_000,
+    timeout: 300_000,
     onError: (err, _req, res) => {
       console.error("[proxy] error:", err.message);
       if (!res.headersSent) {

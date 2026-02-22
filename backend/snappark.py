@@ -1,11 +1,33 @@
+import os
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+from transformers import SegformerForSemanticSegmentation, SegformerConfig, SegformerImageProcessor
 from torchmetrics.classification import BinaryJaccardIndex
 import numpy as np
 import cv2
 from PIL import Image
+
+# Directory to cache / save the HF config so cold starts don't need network
+_CONFIG_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "segformer_config")
+
+
+def _get_segformer_model(model_name="nvidia/mit-b0", **kwargs):
+    """Load SegFormer, preferring a local config cache to avoid HuggingFace downloads."""
+    if os.path.isdir(_CONFIG_CACHE_DIR):
+        # Fast path: load from local config (no network)
+        print(f"[snappark] Loading SegFormer config from local cache: {_CONFIG_CACHE_DIR}")
+        config = SegformerConfig.from_pretrained(_CONFIG_CACHE_DIR, **kwargs)
+        model = SegformerForSemanticSegmentation(config)
+    else:
+        # First run: download from HF and cache locally
+        print(f"[snappark] Downloading SegFormer config from HuggingFace ({model_name})...")
+        model = SegformerForSemanticSegmentation.from_pretrained(model_name, **kwargs)
+        # Save config for future cold starts
+        os.makedirs(_CONFIG_CACHE_DIR, exist_ok=True)
+        model.config.save_pretrained(_CONFIG_CACHE_DIR)
+        print(f"[snappark] Config cached to {_CONFIG_CACHE_DIR}")
+    return model
 
 
 # --- 1. Model Definition ---
@@ -16,7 +38,7 @@ class SegFormerLightning(pl.LightningModule):
         self.save_hyperparameters()
         self.learning_rate = learning_rate
 
-        self.model = SegformerForSemanticSegmentation.from_pretrained(
+        self.model = _get_segformer_model(
             model_name,
             num_labels=1,
             ignore_mismatched_sizes=True,
