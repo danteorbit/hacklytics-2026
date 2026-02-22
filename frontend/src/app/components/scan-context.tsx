@@ -99,11 +99,24 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!apiResponse.ok) {
-        const err = await apiResponse.json();
-        throw new Error(err.error || "Analysis failed");
+        // The response might not be JSON (e.g. Render proxy error page)
+        let errorMessage = `Server error (${apiResponse.status})`;
+        try {
+          const err = await apiResponse.json();
+          errorMessage = err.error || errorMessage;
+        } catch {
+          const text = await apiResponse.text().catch(() => "");
+          errorMessage = text.slice(0, 200) || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      const result = await apiResponse.json();
+      let result;
+      try {
+        result = await apiResponse.json();
+      } catch {
+        throw new Error("Invalid response from server — expected JSON");
+      }
       console.log("[SnapPark] Backend returned:", result);
 
       setScans((prev) =>

@@ -8,13 +8,34 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
+
+// Render private-service discovery gives "host:port" without a scheme.
+// Ensure we always have a full URL.
+let rawBackend = process.env.BACKEND_URL || "http://localhost:5000";
+if (rawBackend && !rawBackend.startsWith("http")) {
+  rawBackend = `http://${rawBackend}`;
+}
+const BACKEND_URL = rawBackend;
+console.log(`[proxy] BACKEND_URL = ${BACKEND_URL}`);
 const DIST = path.join(__dirname, "dist");
 
 // ── Proxy /api requests to the Python backend ────────────────────────────────
 app.use(
   "/api",
-  createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true })
+  createProxyMiddleware({
+    target: BACKEND_URL,
+    changeOrigin: true,
+    // Model inference can take 10-30s on free-tier; give it plenty of time
+    proxyTimeout: 120_000,
+    timeout: 120_000,
+    onError: (err, _req, res) => {
+      console.error("[proxy] error:", err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+      }
+      res.end(JSON.stringify({ error: `Backend unreachable: ${err.message}` }));
+    },
+  })
 );
 
 // ── Serve static assets from the Vite build output ──────────────────────────

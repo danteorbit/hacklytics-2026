@@ -15,8 +15,13 @@ STD_CAR_W_FT = 6.0  # average car width
 STD_CAR_L_FT = 15.0  # average car length
 STD_AISLE_FT = 24.0  # two-way aisle width
 
+# A double-loaded row = 2 × spot_length + 1 × aisle = 60 ft deep, Nw spots wide
+# Effective area per spot ≈ spot_w × (spot_l + aisle/2) = 8.5 × 30 ≈ 255 sqft
+# Use a slightly higher number to account for landscaping, edges, etc.
+SQFT_PER_SPOT = 280  # empirical average including half-aisle share
+
 # Reasonable GSD bounds for aerial/satellite imagery (ft per pixel)
-GSD_MIN = 0.15
+GSD_MIN = 0.05
 GSD_MAX = 3.0
 GSD_DEFAULT = 0.5
 
@@ -104,39 +109,118 @@ def _detect_parking_lines(img_bgr, mask):
     return np.radians(dominant_angle_deg), spacing_px
 
 
-def estimate_gsd(img_bgr, mask, fallback=GSD_DEFAULT):
+def estimate_gsd(img_bgr, mask, expected_spots_hint=None, fallback=GSD_DEFAULT):
     """
-    Estimate ground sampling distance (ft/px) from parking line spacing.
-    Falls back to `fallback` if detection fails.
+    Estimate ground sampling distance (ft/px).
+
+    Strategy:
+      1) Try line-spacing detection — but validate that the implied spot size
+         is reasonable relative to the mask blobs.  A single parking spot
+         shouldn't dominate the blob.
+      2) Fallback: geometry-based estimate from the mask bounding rectangle
+         and the assumption that the narrow dimension spans N double-loaded
+         parking rows (each ~60 ft deep).
     """
     _, spacing_px = _detect_parking_lines(img_bgr, mask)
     if spacing_px is not None and spacing_px > 0:
-        gsd = STD_SPOT_W_FT / spacing_px
-        # Clamp to sensible range
-        gsd = np.clip(gsd, GSD_MIN, GSD_MAX)
+        gsd_candidate = STD_SPOT_W_FT / spacing_px
+
+        # Sanity check: at this GSD, how big is a spot vs the mask blobs?
+        spot_l_px = STD_SPOT_L_FT / gsd_candidate
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            biggest = max(contours, key=cv2.contourArea)
+            _, (rw, rh) = cv2.minAreaRect(biggest)[:2]
+            narrow = min(rw, rh)
+            # If a single spot length would be > 40% of the blob's narrow
+            # dimension, the spacing detection is probably picking up row
+            # edges, not individual stripe widths — reject it.
+            if narrow > 0 and (spot_l_px / narrow) > 0.40:
+                print(
+                    f"[GSD] Line spacing {spacing_px:.1f}px rejected: "
+                    f"spot_l={spot_l_px:.0f}px vs blob narrow={narrow:.0f}px"
+                )
+            else:
+                gsd = float(np.clip(gsd_candidate, GSD_MIN, GSD_MAX))
+                print(
+                    f"[GSD] Estimated from line spacing: {spacing_px:.1f} px "
+                    f"→ GSD={gsd:.3f} ft/px"
+                )
+                return gsd
+
+    # ── Area-based fallback ──────────────────────────────────────────────
+    # Use the LARGEST individual blob's bounding rectangle (not all blobs
+    # combined, which can span the entire image for multi-blob masks).
+    mask_area_px = np.count_nonzero(mask)
+    if mask_area_px > 0:
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            print(f"[GSD] Using hard fallback GSD={fallback:.3f} ft/px")
+            return fallback
+
+        # Use the largest blob for dimension estimation
+        biggest = max(contours, key=cv2.contourArea)
+        rect = cv2.minAreaRect(biggest)
+        rect_w, rect_h = rect[1]
+        narrow_px = min(rect_w, rect_h)
+        wide_px = max(rect_w, rect_h)
+        if narrow_px < 1:
+            narrow_px = 1
+
+        # Double-loaded row depth = 2×18 + 24 = 60 ft
+        ROW_DEPTH_FT = 2 * STD_SPOT_L_FT + STD_AISLE_FT  # 60 ft
+        # Real lots have fire lanes / curbs / drive aisles at perimeter
+        EDGE_BUFFER_FT = 10  # ~5 ft on each side
+
+        # Estimate number of double-loaded rows from aspect ratio
+        aspect = wide_px / narrow_px
+        if aspect > 3:
+            n_rows = 1
+        elif aspect > 1.5:
+            n_rows = 2
+        else:
+            # Square-ish lot: estimate rows more carefully
+            n_rows = max(1, min(4, round(narrow_px / wide_px * aspect + 0.5)))
+
+        est_narrow_ft = n_rows * ROW_DEPTH_FT + EDGE_BUFFER_FT
+        gsd = est_narrow_ft / narrow_px
+
+        # Cross-check: at this GSD, how many spots would the total mask
+        # area produce?  If < 5, the GSD is probably too low (spots too
+        # big).  Increase n_rows to compensate.
+        est_spots = mask_area_px * gsd * gsd / SQFT_PER_SPOT
+        while est_spots < 10 and n_rows < 6:
+            n_rows += 1
+            est_narrow_ft = n_rows * ROW_DEPTH_FT
+            gsd = est_narrow_ft / narrow_px
+            est_spots = mask_area_px * gsd * gsd / SQFT_PER_SPOT
+
+        gsd = float(np.clip(gsd, GSD_MIN, GSD_MAX))
         print(
-            f"[GSD] Estimated from line spacing: {spacing_px:.1f} px → GSD={gsd:.3f} ft/px"
+            f"[GSD] Area-based fallback: blob_narrow={narrow_px:.0f}px, "
+            f"blob_wide={wide_px:.0f}px, n_rows={n_rows}, "
+            f"est_depth={est_narrow_ft:.0f}ft → GSD={gsd:.3f} ft/px "
+            f"(est_spots≈{mask_area_px * gsd * gsd / SQFT_PER_SPOT:.0f})"
         )
         return gsd
-    print(f"[GSD] Using fallback GSD={fallback:.3f} ft/px")
+
+    print(f"[GSD] Using hard fallback GSD={fallback:.3f} ft/px")
     return fallback
 
 
 def detect_lot_angle(img_bgr, mask, contour):
     """
     Determine the best rotation angle for the parking grid.
-    Priority: 1) detected parking lines, 2) longest contour edge,
-              3) minimum-area bounding rect.
+    Priority: 1) detected parking lines, 2) minimum-area bounding rect.
     """
     line_angle, _ = _detect_parking_lines(img_bgr, mask)
     if line_angle is not None:
         print(f"[ANGLE] From parking lines: {np.degrees(line_angle):.1f}°")
         return line_angle
 
-    # Fallback: minimum-area bounding rectangle (better than longest-edge)
+    # Fallback: minimum-area bounding rectangle
     rect = cv2.minAreaRect(contour)
-    angle_deg = rect[2]  # OpenCV returns -90..0 for minAreaRect
-    # Normalize to standard range
+    angle_deg = rect[2]
     w, h = rect[1]
     if w < h:
         angle_deg += 90
@@ -183,14 +267,10 @@ class CivilParkingBlob:
         # Also test the perpendicular angle (spots could face either way)
         candidate_angles = [angle_rad, angle_rad + np.pi / 2]
 
-        # Compute centroid as grid origin
-        M = cv2.moments(self.contour)
-        if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"])
-        else:
-            cx, cy = self.w // 2, self.h // 2
-        origin = np.array([cx, cy], dtype=float)
+        # Use the bounding rect CENTER as origin so the grid extends
+        # symmetrically in all directions regardless of angle
+        x, y, bw, bh = cv2.boundingRect(self.contour)
+        origin = np.array([x + bw / 2, y + bh / 2], dtype=float)
 
         best_spots = []
 
@@ -198,17 +278,16 @@ class CivilParkingBlob:
             v_w = np.array([np.cos(angle), np.sin(angle)])
             v_l = np.array([-np.sin(angle), np.cos(angle)])
 
-            # Grid extents
-            x, y, bw, bh = cv2.boundingRect(self.contour)
             max_dim = max(bw, bh)
             n_w = int(max_dim / self.spot_w) + 2
             n_l = int(max_dim / self.spot_l) + 2
 
-            # Test 5 shifts in each direction for finer alignment
-            shifts_w = np.linspace(0, self.spot_w, 5, endpoint=False)
-            shifts_l = np.linspace(
-                0, (2 * self.spot_l) + self.aisle_len, 5, endpoint=False
-            )
+            # Test grid shifts for phase alignment
+            n_shifts = 5
+            shifts_w = np.linspace(0, self.spot_w, n_shifts, endpoint=False)
+            # For the length direction, shift over one full double-loaded cycle
+            cycle = (2 * self.spot_l) + self.aisle_len
+            shifts_l = np.linspace(0, cycle, n_shifts, endpoint=False)
 
             for sw in shifts_w:
                 for sl in shifts_l:
@@ -224,8 +303,8 @@ class CivilParkingBlob:
         valid_spots = []
         cycle_len = (2 * self.spot_l) + self.aisle_len
 
-        for i in range(-n_w, n_w):
-            for j in range(-n_l, n_l):
+        for i in range(-n_w, n_w + 1):
+            for j in range(-n_l, n_l + 1):
                 # Double-loaded layout: two rows of spots separated by an aisle
                 offset_w = i * self.spot_w
                 cycle_idx = j // 2
@@ -249,10 +328,9 @@ class CivilParkingBlob:
                 ]
                 spot_poly = np.array(corners, dtype=np.int32)
 
-                # ── Containment check: require ALL corners + center inside blob mask ──
+                # ── Fast containment: check center + 4 corners inside blob mask ──
                 all_inside = True
-                check_points = [center] + corners
-                for pt in check_points:
+                for pt in [center] + corners:
                     px, py = int(pt[0]), int(pt[1])
                     if not (0 <= px < self.w and 0 <= py < self.h):
                         all_inside = False
@@ -261,19 +339,24 @@ class CivilParkingBlob:
                         all_inside = False
                         break
 
-                if not all_inside:
+                if all_inside:
+                    valid_spots.append(ParkingSpot(cx, cy, spot_poly))
                     continue
 
-                # ── Area overlap check: at least 85% of the spot polygon must lie inside the mask ──
+                # ── Softer overlap check for edge spots: ≥70% inside mask ──
+                # Only check if center is at least inside
+                if not (0 <= cx < self.w and 0 <= cy < self.h):
+                    continue
+                if self.blob_mask[cy, cx] == 0:
+                    continue
+
                 spot_mask = np.zeros((self.h, self.w), dtype=np.uint8)
                 cv2.fillPoly(spot_mask, [spot_poly], 255)
                 overlap = cv2.bitwise_and(spot_mask, self.blob_mask)
                 spot_area = np.count_nonzero(spot_mask)
                 overlap_area = np.count_nonzero(overlap)
-                if spot_area == 0 or (overlap_area / spot_area) < 0.85:
-                    continue
-
-                valid_spots.append(ParkingSpot(cx, cy, spot_poly))
+                if spot_area > 0 and (overlap_area / spot_area) >= 0.55:
+                    valid_spots.append(ParkingSpot(cx, cy, spot_poly))
 
         return valid_spots
 
@@ -285,7 +368,7 @@ class CivilParkingBlob:
         # Semi-transparent overlay for each spot
         overlay = canvas.copy()
         for spot in self.confirmed_spots:
-            cv2.fillPoly(overlay, [spot.spot_poly], (200, 120, 0))  # blue-ish fill
+            cv2.fillPoly(overlay, [spot.spot_poly], (200, 120, 0))
             cv2.polylines(canvas, [spot.spot_poly], True, (0, 255, 0), 1)
         cv2.addWeighted(overlay, 0.25, canvas, 0.75, 0, canvas)
 
@@ -318,9 +401,9 @@ def process_parking_image_civil(
     _, binary_mask = cv2.threshold(mask_gray, 127, 255, cv2.THRESH_BINARY)
     print(f"[CIVIL] mask nonzero={np.count_nonzero(binary_mask)}")
 
-    # Erode the mask slightly to avoid bleeding into roads/sidewalks
-    erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    eroded_mask = cv2.erode(binary_mask, erode_kernel, iterations=1)
+    # Skip erosion — SegFormer masks are already clean and erosion
+    # removes valid edge pixels that reduce spot detection at boundaries.
+    eroded_mask = binary_mask
 
     # GSD estimation
     active_gsd = gsd_ft_px
