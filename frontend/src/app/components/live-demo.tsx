@@ -45,8 +45,9 @@ export function LiveDemo() {
     { url: string; name: string }[]
   >([]);
 
-  // Before/after modal
-  const [previewScan, setPreviewScan] = useState<Scan | null>(null);
+  // Before/after modal — store only the ID so we always read the latest scan data
+  const [previewScanId, setPreviewScanId] = useState<string | null>(null);
+  const previewScan = previewScanId ? scans.find((s) => s.id === previewScanId) ?? null : null;
 
   // ── Sample click ────────────────────────────────────────────────
   const handleSampleClick = (sample: { url: string; label: string }) => {
@@ -272,7 +273,7 @@ export function LiveDemo() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: i * 0.04 }}
-                onClick={() => setPreviewScan(scan)}
+                onClick={() => setPreviewScanId(scan.id)}
                 className="group cursor-pointer rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
                 style={{
                   background: "rgba(255,255,255,0.02)",
@@ -561,7 +562,7 @@ export function LiveDemo() {
               background: "rgba(0,0,0,0.8)",
               backdropFilter: "blur(12px)",
             }}
-            onClick={() => setPreviewScan(null)}
+            onClick={() => setPreviewScanId(null)}
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
@@ -578,7 +579,7 @@ export function LiveDemo() {
             >
               {/* Close */}
               <button
-                onClick={() => setPreviewScan(null)}
+                onClick={() => setPreviewScanId(null)}
                 className="absolute top-4 right-4 z-10 p-2 rounded-lg cursor-pointer"
                 style={{
                   background: "rgba(0,0,0,0.6)",

@@ -240,12 +240,18 @@ class CivilParkingBlob:
 
 def process_parking_image_civil(img_bgr, mask_gray, gsd_ft_px=0.5, auto_gsd=True):
     _, binary_mask = cv2.threshold(mask_gray, 127, 255, cv2.THRESH_BINARY)
+    print(
+        f"[CIVIL DEBUG] binary_mask nonzero={np.count_nonzero(binary_mask)}, "
+        f"unique={np.unique(binary_mask)}"
+    )
 
     active_gsd = gsd_ft_px
     if auto_gsd:
         detected_gsd = estimate_gsd_from_lines(img_bgr, binary_mask)
+        print(f"[CIVIL DEBUG] detected_gsd={detected_gsd}")
         if detected_gsd is not None:
             active_gsd = detected_gsd
+    print(f"[CIVIL DEBUG] active_gsd={active_gsd}")
 
     px_per_ft = 1.0 / active_gsd
     params = {
@@ -256,10 +262,14 @@ def process_parking_image_civil(img_bgr, mask_gray, gsd_ft_px=0.5, auto_gsd=True
         "aisle_len": 24.0 * px_per_ft,
         "gsd": active_gsd,
     }
+    print(
+        f"[CIVIL DEBUG] spot_w_px={params['spot_w']:.1f}, spot_l_px={params['spot_l']:.1f}"
+    )
 
     contours, _ = cv2.findContours(
         binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
+    print(f"[CIVIL DEBUG] found {len(contours)} contours")
 
     result_img = img_bgr.copy()
     total_spots = 0
@@ -267,14 +277,25 @@ def process_parking_image_civil(img_bgr, mask_gray, gsd_ft_px=0.5, auto_gsd=True
 
     for contour in contours:
         area_px = cv2.contourArea(contour)
-        if area_px < (params["car_w"] * params["car_l"] * 2):
+        min_area = params["car_w"] * params["car_l"] * 2
+        if area_px < min_area:
+            print(
+                f"[CIVIL DEBUG] Contour {blob_id}: area_px={area_px:.0f} < min={min_area:.0f}, SKIPPED"
+            )
             continue
+
+        print(
+            f"[CIVIL DEBUG] Contour {blob_id}: area_px={area_px:.0f} (min={min_area:.0f})"
+        )
 
         blob_mask = np.zeros_like(binary_mask)
         cv2.drawContours(blob_mask, [contour], -1, 255, -1)
 
         blob_obj = CivilParkingBlob(blob_id, binary_mask, blob_mask, contour, params)
         blob_obj.process_layout()
+        print(
+            f"[CIVIL DEBUG] Blob {blob_id}: {len(blob_obj.confirmed_spots)} spots found"
+        )
         blob_obj.draw(result_img)
 
         total_spots += len(blob_obj.confirmed_spots)

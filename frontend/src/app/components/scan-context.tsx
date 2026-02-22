@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useRef } from "react";
 
 const API_BASE = "/api";
 
@@ -31,6 +31,10 @@ const ScanContext = createContext<ScanContextType | null>(null);
 export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [scans, setScans] = useState<Scan[]>([]);
 
+  // Synchronous lookup map — avoids stale-closure issues when submitScan is
+  // called immediately after addScan (before React re-renders).
+  const scanMapRef = useRef<Map<string, Scan>>(new Map());
+
   const addScan = useCallback((image: string, fileName: string, location: string): Scan => {
     const now = new Date();
     const timestamp = now.toISOString().replace("T", " ").slice(0, 19);
@@ -47,11 +51,14 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       confidence: null,
       error: null,
     };
+    // Store synchronously so submitScan can find it immediately
+    scanMapRef.current.set(newScan.id, newScan);
     setScans((prev) => [newScan, ...prev]);
     return newScan;
   }, []);
 
   const removeScan = useCallback((id: string) => {
+    scanMapRef.current.delete(id);
     setScans((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
@@ -61,15 +68,19 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       prev.map((s) => (s.id === id ? { ...s, status: "processing" as const } : s))
     );
 
-    // Find the scan
-    const scan = scans.find((s) => s.id === id);
-    if (!scan) return;
+    // Look up from the synchronous ref (always has the latest data)
+    const scan = scanMapRef.current.get(id);
+    if (!scan) {
+      console.error("[SnapPark] submitScan: scan not found for id", id);
+      return;
+    }
+    console.log("[SnapPark] submitScan: sending", scan.fileName, "to backend...");
 
     try {
-      // Convert the blob URL to a File object
+      // Convert the blob/data URL to a File object
       const response = await fetch(scan.image);
       const blob = await response.blob();
-      const file = new File([blob], scan.fileName, { type: blob.type });
+      const file = new File([blob], scan.fileName, { type: blob.type || "image/jpeg" });
 
       // Upload to the backend
       const formData = new FormData();
@@ -86,6 +97,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       }
 
       const result = await apiResponse.json();
+      console.log("[SnapPark] Backend returned:", result);
 
       setScans((prev) =>
         prev.map((s) =>
@@ -103,13 +115,14 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[SnapPark] submitScan error:", message);
       setScans((prev) =>
         prev.map((s) =>
           s.id === id ? { ...s, status: "error" as const, error: message } : s
         )
       );
     }
-  }, [scans]);
+  }, []);
 
   const submitAllScans = useCallback(async () => {
     const pendingScans = scans.filter((s) => s.status === "pending");
@@ -119,6 +132,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, [scans, submitScan]);
 
   const clearScans = useCallback(() => {
+    scanMapRef.current.clear();
     setScans([]);
   }, []);
 

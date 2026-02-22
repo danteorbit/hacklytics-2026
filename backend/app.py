@@ -84,6 +84,11 @@ def analyze():
         # 2. Predict mask using the SegFormer model
         pil_mask = predictor.predict(input_path)
         mask_arr = np.array(pil_mask)
+        print(
+            f"[DEBUG] mask_arr shape={mask_arr.shape}, dtype={mask_arr.dtype}, "
+            f"min={mask_arr.min()}, max={mask_arr.max()}, "
+            f"nonzero={np.count_nonzero(mask_arr)}"
+        )
 
         # 3. Convert mask to grayscale
         if mask_arr.ndim == 3:
@@ -99,14 +104,23 @@ def analyze():
         # 4. Resize mask to match image if needed
         h_mask, w_mask = mask_gray.shape[:2]
         if (h_img, w_img) != (h_mask, w_mask):
+            print(
+                f"[DEBUG] Resizing mask from ({h_mask},{w_mask}) to ({h_img},{w_img})"
+            )
             mask_gray = cv2.resize(
                 mask_gray, (w_img, h_img), interpolation=cv2.INTER_NEAREST
             )
+
+        print(
+            f"[DEBUG] mask_gray: shape={mask_gray.shape}, nonzero={np.count_nonzero(mask_gray)}, "
+            f"unique_values={np.unique(mask_gray)}"
+        )
 
         # 5. Run the civil engineering grid analysis
         annotated_img, total_spots = process_parking_image_civil(
             img_bgr, mask_gray, gsd_ft_px=0.5, auto_gsd=True
         )
+        print(f"[DEBUG] total_spots={total_spots}")
 
         # 6. Save the annotated result
         result_filename = f"{job_id}_result.jpg"

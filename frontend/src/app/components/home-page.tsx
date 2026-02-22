@@ -15,7 +15,7 @@ import {
   Trash2,
   Send,
 } from "lucide-react";
-import { useScans, type Scan } from "./scan-context";
+import { useScans } from "./scan-context";
 import { useNavigate } from "react-router";
 
 export function HomePage() {
@@ -24,9 +24,10 @@ export function HomePage() {
   const [pendingFiles, setPendingFiles] = useState<
     { url: string; name: string }[]
   >([]);
-  const [previewScan, setPreviewScan] = useState<Scan | null>(null);
+  const [previewScanId, setPreviewScanId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { scans, addScan, removeScan, submitScan, submitAllScans } = useScans();
+  const previewScan = previewScanId ? scans.find((s) => s.id === previewScanId) ?? null : null;
   const navigate = useNavigate();
 
   const hasScans = scans.length > 0;
@@ -401,7 +402,7 @@ export function HomePage() {
                   {/* Image */}
                   <div
                     className="relative aspect-[4/3] overflow-hidden cursor-pointer"
-                    onClick={() => setPreviewScan(scan)}
+                    onClick={() => setPreviewScanId(scan.id)}
                   >
                     <img
                       src={scan.image}
@@ -465,7 +466,7 @@ export function HomePage() {
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setPreviewScan(scan);
+                          setPreviewScanId(scan.id);
                         }}
                       >
                         <Eye className="w-5 h-5 text-white" />
@@ -495,7 +496,7 @@ export function HomePage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           removeScan(scan.id);
-                          if (previewScan?.id === scan.id) setPreviewScan(null);
+                          if (previewScanId === scan.id) setPreviewScanId(null);
                         }}
                       >
                         <Trash2 className="w-5 h-5" style={{ color: "#f87171" }} />
@@ -546,7 +547,7 @@ export function HomePage() {
               background: "rgba(0,0,0,0.8)",
               backdropFilter: "blur(12px)",
             }}
-            onClick={() => setPreviewScan(null)}
+            onClick={() => setPreviewScanId(null)}
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
@@ -563,7 +564,7 @@ export function HomePage() {
             >
               {/* Close */}
               <button
-                onClick={() => setPreviewScan(null)}
+                onClick={() => setPreviewScanId(null)}
                 className="absolute top-4 right-4 z-10 p-2 rounded-lg cursor-pointer"
                 style={{
                   background: "rgba(0,0,0,0.6)",
@@ -674,8 +675,8 @@ export function HomePage() {
                       <div
                         className="w-2.5 h-2.5 rounded-full"
                         style={{
-                          background: "#22c55e",
-                          boxShadow: "0 0 8px rgba(34, 197, 94, 0.5)",
+                          background: previewScan.resultImage ? "#22c55e" : "#555",
+                          boxShadow: previewScan.resultImage ? "0 0 8px rgba(34, 197, 94, 0.5)" : "none",
                         }}
                       />
                       <span
@@ -691,16 +692,33 @@ export function HomePage() {
                     <div
                       className="relative rounded-2xl overflow-hidden"
                       style={{
-                        border: "1px solid rgba(34, 197, 94, 0.2)",
+                        border: previewScan.resultImage
+                          ? "1px solid rgba(34, 197, 94, 0.2)"
+                          : "1px solid rgba(255,255,255,0.08)",
                         boxShadow:
                           "0 8px 40px rgba(0,0,0,0.4), 0 0 40px rgba(34, 197, 94, 0.06)",
                       }}
                     >
-                      <img
-                        src={previewScan.image}
-                        alt="Detected"
-                        className="w-full h-auto object-cover"
-                      />
+                      {previewScan.resultImage ? (
+                        <img
+                          src={previewScan.resultImage}
+                          alt="Detected parking spots"
+                          className="w-full h-auto object-cover"
+                        />
+                      ) : previewScan.status === "processing" ? (
+                        <div className="w-full flex items-center justify-center py-20" style={{ background: "rgba(0,0,0,0.3)" }}>
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#4ade80", borderTopColor: "transparent" }} />
+                            <span className="text-sm" style={{ color: "#888" }}>Analyzing parking lot...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full flex items-center justify-center py-20" style={{ background: "rgba(0,0,0,0.3)" }}>
+                          <span className="text-sm" style={{ color: "#666" }}>
+                            {previewScan.error || "Awaiting analysis"}
+                          </span>
+                        </div>
+                      )}
                       <div
                         className="absolute bottom-0 left-0 right-0 p-4"
                         style={{
@@ -712,7 +730,9 @@ export function HomePage() {
                           className="text-sm tracking-wide"
                           style={{ color: "#4ade80" }}
                         >
-                          Detected Open Spots
+                          {previewScan.resultImage
+                            ? `${previewScan.totalSpots ?? 0} Parking Spots Detected`
+                            : "Detected Open Spots"}
                         </span>
                       </div>
                     </div>
@@ -728,18 +748,27 @@ export function HomePage() {
                   }}
                 >
                   <p className="text-sm" style={{ color: "#666" }}>
-                    The "After" image will be processed by your data pipeline to
-                    highlight open spots.
+                    {previewScan.status === "processed"
+                      ? `Analysis complete — ${previewScan.totalSpots} parking spots identified.`
+                      : previewScan.status === "processing"
+                        ? "Image is being analyzed by the SnapPark backend..."
+                        : previewScan.error
+                          ? `Error: ${previewScan.error}`
+                          : "Awaiting analysis from the backend."}
                   </p>
                   <span
                     className="flex-shrink-0 px-4 py-1.5 rounded-full text-xs tracking-wide"
                     style={{
-                      background: "rgba(34, 197, 94, 0.1)",
-                      border: "1px solid rgba(34, 197, 94, 0.25)",
-                      color: "#4ade80",
+                      background: previewScan.status === "processed"
+                        ? "rgba(34, 197, 94, 0.1)"
+                        : "rgba(250,204,21,0.1)",
+                      border: previewScan.status === "processed"
+                        ? "1px solid rgba(34, 197, 94, 0.25)"
+                        : "1px solid rgba(250,204,21,0.25)",
+                      color: previewScan.status === "processed" ? "#4ade80" : "#facc15",
                     }}
                   >
-                    Awaiting Detection
+                    {previewScan.status === "processed" ? "Complete" : previewScan.status === "processing" ? "Processing..." : "Awaiting Detection"}
                   </span>
                 </div>
               </div>
