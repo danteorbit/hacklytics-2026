@@ -6,59 +6,80 @@ import {
   ArrowRight,
   ScanLine,
   Upload,
-  RefreshCw,
   MapPin,
+  X,
+  Eye,
+  Clock,
+  Images,
+  Plus,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
-import { ImageComparison } from "./image-comparison";
-import { useScans } from "./scan-context";
+import { useScans, type Scan } from "./scan-context";
 import { useNavigate } from "react-router";
 
+const MAX_IMAGES = 6;
+
 export function HomePage() {
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [locationInput, setLocationInput] = useState("");
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
-  const [pendingFile, setPendingFile] = useState<{
-    url: string;
-    name: string;
-  } | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<
+    { url: string; name: string }[]
+  >([]);
+  const [previewScan, setPreviewScan] = useState<Scan | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { addScan } = useScans();
+  const { scans, addScan, removeScan } = useScans();
   const navigate = useNavigate();
 
+  const remaining = MAX_IMAGES - scans.length;
+  const isFull = remaining <= 0;
+  const hasScans = scans.length > 0;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setPendingFile({ url, name: file.name });
-      setShowLocationPrompt(true);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Clamp to remaining capacity
+    const allowed = Math.min(files.length, remaining);
+    if (allowed <= 0) return;
+
+    const pending: { url: string; name: string }[] = [];
+    for (let i = 0; i < allowed; i++) {
+      pending.push({ url: URL.createObjectURL(files[i]), name: files[i].name });
     }
+    setPendingFiles(pending);
+    setShowLocationPrompt(true);
+    e.target.value = "";
   };
 
   const handleConfirmUpload = () => {
-    if (!pendingFile) return;
-    addScan(pendingFile.url, pendingFile.name, locationInput.trim());
-    setSelectedImage(pendingFile.url);
+    if (pendingFiles.length === 0) return;
+    const loc = locationInput.trim();
+    for (const f of pendingFiles) {
+      addScan(f.url, f.name, loc);
+    }
     setShowLocationPrompt(false);
     setLocationInput("");
-    setPendingFile(null);
+    setPendingFiles([]);
   };
 
   const handleSkipLocation = () => {
-    if (!pendingFile) return;
-    addScan(pendingFile.url, pendingFile.name, "");
-    setSelectedImage(pendingFile.url);
+    if (pendingFiles.length === 0) return;
+    for (const f of pendingFiles) {
+      addScan(f.url, f.name, "");
+    }
     setShowLocationPrompt(false);
     setLocationInput("");
-    setPendingFile(null);
+    setPendingFiles([]);
   };
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col items-center gap-10">
-      {/* Hero */}
+      {/* ── Hero ───────────────────────────────────────────────────── */}
       <AnimatePresence mode="wait">
-        {!selectedImage && (
+        {!hasScans ? (
           <motion.div
-            key="hero"
+            key="hero-full"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
@@ -92,57 +113,96 @@ export function HomePage() {
               highlight every open spot for you.
             </p>
           </motion.div>
+        ) : (
+          <motion.div
+            key="hero-compact"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="text-center flex flex-col items-center gap-2 mt-2"
+          >
+            <h1
+              className="text-3xl sm:text-4xl tracking-tight"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              <span style={{ color: "#4ade80" }}>Snap</span>
+              <span className="text-white">Park</span>
+            </h1>
+            <p className="text-sm" style={{ color: "#666" }}>
+              {scans.length} / {MAX_IMAGES} slots used
+            </p>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Upload button */}
-      <div className="flex flex-col items-center gap-4">
+      {/* ── Upload button ──────────────────────────────────────────── */}
+      <div className="flex flex-col items-center gap-3">
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           onChange={handleFileChange}
           className="hidden"
         />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="group relative flex items-center gap-3 px-8 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden text-white"
-          style={{
-            background: "linear-gradient(135deg, #16a34a, #22c55e)",
-            boxShadow:
-              "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow =
-              "0 8px 30px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow =
-              "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)";
-          }}
-        >
-          {selectedImage ? (
-            <RefreshCw className="w-5 h-5 relative z-10" />
-          ) : (
-            <Upload className="w-5 h-5 relative z-10" />
-          )}
-          <span
-            className="relative z-10"
-            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+
+        {isFull ? (
+          <div
+            className="flex items-center gap-3 px-6 py-3.5 rounded-2xl"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
           >
-            {selectedImage ? "Scan Another Image" : "Select Image"}
-          </span>
-        </button>
-        {!selectedImage && (
+            <AlertCircle className="w-5 h-5" style={{ color: "#facc15" }} />
+            <span className="text-sm" style={{ color: "#999" }}>
+              All {MAX_IMAGES} slots filled — remove an image to add a new one
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="group relative flex items-center gap-3 px-8 py-4 rounded-2xl cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden text-white"
+            style={{
+              background: "linear-gradient(135deg, #16a34a, #22c55e)",
+              boxShadow:
+                "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 8px 30px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 4px 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.1)";
+            }}
+          >
+            {hasScans ? (
+              <Plus className="w-5 h-5 relative z-10" />
+            ) : (
+              <Upload className="w-5 h-5 relative z-10" />
+            )}
+            <span
+              className="relative z-10"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              {hasScans
+                ? `Add Images (${remaining} left)`
+                : "Select Images"}
+            </span>
+          </button>
+        )}
+
+        {!hasScans && (
           <p className="text-center max-w-sm text-sm" style={{ color: "#555" }}>
-            Upload a parking lot photo to get started
+            Upload up to {MAX_IMAGES} parking lot photos to get started
           </p>
         )}
       </div>
 
-      {/* Location prompt modal */}
+      {/* ── Location prompt modal ──────────────────────────────────── */}
       <AnimatePresence>
-        {showLocationPrompt && pendingFile && (
+        {showLocationPrompt && pendingFiles.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -165,24 +225,51 @@ export function HomePage() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Preview thumbnail */}
-              <div className="rounded-xl overflow-hidden mb-5 h-32">
-                <img
-                  src={pendingFile.url}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                />
+              {/* Preview thumbnails */}
+              <div className="rounded-xl overflow-hidden mb-5">
+                {pendingFiles.length === 1 ? (
+                  <img
+                    src={pendingFiles[0].url}
+                    alt="Preview"
+                    className="w-full h-32 object-cover"
+                  />
+                ) : (
+                  <div className="grid grid-cols-3 gap-1 h-32">
+                    {pendingFiles.slice(0, 3).map((f, i) => (
+                      <div key={i} className="relative overflow-hidden">
+                        <img
+                          src={f.url}
+                          alt={f.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {i === 2 && pendingFiles.length > 3 && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center"
+                            style={{ background: "rgba(0,0,0,0.6)" }}
+                          >
+                            <span className="text-white text-sm">
+                              +{pendingFiles.length - 3}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <h3
                 className="text-white mb-1"
                 style={{ fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                Where is this parking lot?
+                {pendingFiles.length === 1
+                  ? "Where is this parking lot?"
+                  : `Where are these ${pendingFiles.length} parking lots?`}
               </h3>
               <p className="text-sm mb-4" style={{ color: "#666" }}>
-                Add a location so it shows up on your City View and Analytics.
-                Optional — you can skip this.
+                Add a location for your{" "}
+                {pendingFiles.length === 1 ? "image" : "images"}. Optional — you
+                can skip this.
               </p>
 
               <div className="relative mb-4">
@@ -236,7 +323,9 @@ export function HomePage() {
                     boxShadow: "0 4px 16px rgba(34, 197, 94, 0.25)",
                   }}
                 >
-                  Confirm & Scan
+                  {pendingFiles.length === 1
+                    ? "Confirm & Scan"
+                    : `Scan ${pendingFiles.length} Images`}
                 </button>
               </div>
             </motion.div>
@@ -244,16 +333,468 @@ export function HomePage() {
         )}
       </AnimatePresence>
 
-      {/* Comparison */}
-      <AnimatePresence mode="wait">
-        {selectedImage && (
-          <ImageComparison key={selectedImage} imageUrl={selectedImage} />
+      {/* ── Image Grid ─────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {hasScans && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="w-full max-w-5xl"
+          >
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <Images className="w-4 h-4" style={{ color: "#4ade80" }} />
+                <span className="text-sm" style={{ color: "#888" }}>
+                  Your Uploads
+                </span>
+                {/* Capacity dots */}
+                <div className="flex items-center gap-1 ml-2">
+                  {Array.from({ length: MAX_IMAGES }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        background:
+                          i < scans.length
+                            ? "#4ade80"
+                            : "rgba(255,255,255,0.08)",
+                        boxShadow:
+                          i < scans.length
+                            ? "0 0 6px rgba(74,222,128,0.4)"
+                            : "none",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={() => navigate("/history")}
+                className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200"
+                style={{
+                  color: "#666",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#4ade80";
+                  e.currentTarget.style.borderColor = "rgba(34,197,94,0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#666";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                }}
+              >
+                View Full History &rarr;
+              </button>
+            </div>
+
+            {/* Adaptive grid — always 3 columns on desktop, nice for 1-6 items */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {scans.slice(0, MAX_IMAGES).map((scan, i) => (
+                <motion.div
+                  key={scan.id}
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.35, delay: i * 0.05 }}
+                  className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "rgba(34, 197, 94, 0.3)";
+                    e.currentTarget.style.boxShadow =
+                      "0 8px 30px rgba(34, 197, 94, 0.08)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor =
+                      "rgba(255,255,255,0.06)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                >
+                  {/* Image */}
+                  <div
+                    className="relative aspect-[4/3] overflow-hidden cursor-pointer"
+                    onClick={() => setPreviewScan(scan)}
+                  >
+                    <img
+                      src={scan.image}
+                      alt={scan.fileName}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        background:
+                          "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 55%)",
+                      }}
+                    />
+
+                    {/* Slot number */}
+                    <div
+                      className="absolute top-3 left-3 w-7 h-7 rounded-lg flex items-center justify-center text-xs"
+                      style={{
+                        background: "rgba(0,0,0,0.55)",
+                        backdropFilter: "blur(8px)",
+                        color: "#4ade80",
+                        border: "1px solid rgba(74,222,128,0.2)",
+                        fontFamily: "'Space Grotesk', sans-serif",
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+
+                    {/* Status badge */}
+                    <div className="absolute top-3 right-3">
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full"
+                        style={{
+                          background:
+                            scan.status === "pending"
+                              ? "rgba(250,204,21,0.15)"
+                              : "rgba(74,222,128,0.15)",
+                          color:
+                            scan.status === "pending" ? "#facc15" : "#4ade80",
+                          border:
+                            scan.status === "pending"
+                              ? "1px solid rgba(250,204,21,0.3)"
+                              : "1px solid rgba(74,222,128,0.3)",
+                          backdropFilter: "blur(8px)",
+                        }}
+                      >
+                        {scan.status === "pending" ? "Pending" : "Processed"}
+                      </span>
+                    </div>
+
+                    {/* Hover overlay */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                      style={{ background: "rgba(0,0,0,0.35)" }}
+                    >
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer"
+                        style={{
+                          background: "rgba(255,255,255,0.15)",
+                          backdropFilter: "blur(8px)",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewScan(scan);
+                        }}
+                      >
+                        <Eye className="w-5 h-5 text-white" />
+                      </div>
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer"
+                        style={{
+                          background: "rgba(248,113,113,0.2)",
+                          backdropFilter: "blur(8px)",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeScan(scan.id);
+                          if (previewScan?.id === scan.id) setPreviewScan(null);
+                        }}
+                      >
+                        <Trash2 className="w-5 h-5" style={{ color: "#f87171" }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-3.5">
+                    <p
+                      className="text-sm text-white truncate mb-1"
+                      title={scan.fileName}
+                    >
+                      {scan.fileName}
+                    </p>
+                    <div
+                      className="flex items-center gap-3 text-xs"
+                      style={{ color: "#555" }}
+                    >
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {scan.timestamp.slice(11, 16) || scan.timestamp}
+                      </span>
+                      {scan.location && scan.location !== "Unknown Location" && (
+                        <span className="flex items-center gap-1 truncate">
+                          <MapPin className="w-3 h-3 flex-shrink-0" />
+                          {scan.location}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* "Add more" card — only if under capacity */}
+              {!isFull && (
+                <motion.div
+                  key="add-card"
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{
+                    duration: 0.35,
+                    delay: scans.length * 0.05,
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="group cursor-pointer rounded-2xl flex flex-col items-center justify-center gap-3 aspect-[4/3] transition-all duration-300 hover:-translate-y-1"
+                  style={{
+                    background: "rgba(34,197,94,0.03)",
+                    border: "1px dashed rgba(34,197,94,0.2)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(34,197,94,0.5)";
+                    e.currentTarget.style.background = "rgba(34,197,94,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(34,197,94,0.2)";
+                    e.currentTarget.style.background = "rgba(34,197,94,0.03)";
+                  }}
+                >
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center"
+                    style={{
+                      background: "rgba(74,222,128,0.1)",
+                      border: "1px solid rgba(74,222,128,0.2)",
+                    }}
+                  >
+                    <Plus className="w-6 h-6" style={{ color: "#4ade80" }} />
+                  </div>
+                  <span className="text-sm" style={{ color: "#4ade80" }}>
+                    Add More
+                  </span>
+                  <span className="text-xs" style={{ color: "#555" }}>
+                    {remaining} {remaining === 1 ? "slot" : "slots"} remaining
+                  </span>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* How it Works */}
+      {/* ── Before / After Preview Modal ───────────────────────────── */}
       <AnimatePresence>
-        {!selectedImage && (
+        {previewScan && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+            style={{
+              background: "rgba(0,0,0,0.8)",
+              backdropFilter: "blur(12px)",
+            }}
+            onClick={() => setPreviewScan(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="relative w-full max-w-5xl rounded-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+              style={{
+                background: "#0b0f0d",
+                border: "1px solid rgba(255,255,255,0.08)",
+                scrollbarWidth: "thin",
+                scrollbarColor: "#333 transparent",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close */}
+              <button
+                onClick={() => setPreviewScan(null)}
+                className="absolute top-4 right-4 z-10 p-2 rounded-lg cursor-pointer"
+                style={{
+                  background: "rgba(0,0,0,0.6)",
+                  color: "#888",
+                  backdropFilter: "blur(8px)",
+                }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="p-6">
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-6 flex-wrap">
+                  <h2
+                    className="text-xl sm:text-2xl tracking-tight text-white"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                  >
+                    {previewScan.fileName}
+                  </h2>
+                  {previewScan.location &&
+                    previewScan.location !== "Unknown Location" && (
+                      <span
+                        className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full"
+                        style={{
+                          background: "rgba(34,197,94,0.1)",
+                          color: "#4ade80",
+                          border: "1px solid rgba(34,197,94,0.2)",
+                        }}
+                      >
+                        <MapPin className="w-3 h-3" />
+                        {previewScan.location}
+                      </span>
+                    )}
+                  <span
+                    className="text-xs px-2.5 py-1 rounded-full"
+                    style={{
+                      background:
+                        previewScan.status === "pending"
+                          ? "rgba(250,204,21,0.1)"
+                          : "rgba(74,222,128,0.1)",
+                      color:
+                        previewScan.status === "pending"
+                          ? "#facc15"
+                          : "#4ade80",
+                      border:
+                        previewScan.status === "pending"
+                          ? "1px solid rgba(250,204,21,0.2)"
+                          : "1px solid rgba(74,222,128,0.2)",
+                    }}
+                  >
+                    {previewScan.status === "pending"
+                      ? "Awaiting Detection"
+                      : "Processed"}
+                  </span>
+                </div>
+
+                {/* Before / After */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  {/* Before */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ background: "#444" }}
+                      />
+                      <span
+                        className="tracking-tight"
+                        style={{
+                          fontFamily: "'Space Grotesk', sans-serif",
+                          color: "#888",
+                        }}
+                      >
+                        Before
+                      </span>
+                    </div>
+                    <div
+                      className="relative rounded-2xl overflow-hidden"
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        boxShadow: "0 8px 40px rgba(0, 0, 0, 0.4)",
+                      }}
+                    >
+                      <img
+                        src={previewScan.image}
+                        alt="Original"
+                        className="w-full h-auto object-cover"
+                      />
+                      <div
+                        className="absolute bottom-0 left-0 right-0 p-4"
+                        style={{
+                          background:
+                            "linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.3), transparent)",
+                        }}
+                      >
+                        <span
+                          className="text-sm tracking-wide"
+                          style={{ color: "#999" }}
+                        >
+                          Original Image
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* After */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{
+                          background: "#22c55e",
+                          boxShadow: "0 0 8px rgba(34, 197, 94, 0.5)",
+                        }}
+                      />
+                      <span
+                        className="tracking-tight"
+                        style={{
+                          fontFamily: "'Space Grotesk', sans-serif",
+                          color: "#888",
+                        }}
+                      >
+                        After
+                      </span>
+                    </div>
+                    <div
+                      className="relative rounded-2xl overflow-hidden"
+                      style={{
+                        border: "1px solid rgba(34, 197, 94, 0.2)",
+                        boxShadow:
+                          "0 8px 40px rgba(0,0,0,0.4), 0 0 40px rgba(34, 197, 94, 0.06)",
+                      }}
+                    >
+                      <img
+                        src={previewScan.image}
+                        alt="Detected"
+                        className="w-full h-auto object-cover"
+                      />
+                      <div
+                        className="absolute bottom-0 left-0 right-0 p-4"
+                        style={{
+                          background:
+                            "linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.3), transparent)",
+                        }}
+                      >
+                        <span
+                          className="text-sm tracking-wide"
+                          style={{ color: "#4ade80" }}
+                        >
+                          Detected Open Spots
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info bar */}
+                <div
+                  className="p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3"
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <p className="text-sm" style={{ color: "#666" }}>
+                    The "After" image will be processed by your data pipeline to
+                    highlight open spots.
+                  </p>
+                  <span
+                    className="flex-shrink-0 px-4 py-1.5 rounded-full text-xs tracking-wide"
+                    style={{
+                      background: "rgba(34, 197, 94, 0.1)",
+                      border: "1px solid rgba(34, 197, 94, 0.25)",
+                      color: "#4ade80",
+                    }}
+                  >
+                    Awaiting Detection
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── How it Works — empty state only ─────────────────────────── */}
+      <AnimatePresence>
+        {!hasScans && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -290,23 +831,23 @@ export function HomePage() {
               {[
                 {
                   step: "1",
-                  title: "Upload Image",
+                  title: "Upload Images",
                   description:
-                    "Select a photo of any parking lot — aerial, street-level, or security camera.",
+                    "Select up to 6 photos of any parking lot — aerial, street-level, or security camera.",
                   icon: Camera,
                 },
                 {
                   step: "2",
                   title: "AI Detection",
                   description:
-                    "Our model scans the image to identify which spots are taken and which are open.",
+                    "Our model scans each image to identify which spots are taken and which are open.",
                   icon: Sparkles,
                 },
                 {
                   step: "3",
                   title: "View Results",
                   description:
-                    "Compare before and after — open spots are clearly highlighted on the output.",
+                    "Compare before and after — open spots are clearly highlighted on every output.",
                   icon: ArrowRight,
                 },
               ].map((item, i) => (
@@ -331,7 +872,8 @@ export function HomePage() {
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor =
                       "rgba(255,255,255,0.06)";
-                    e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                    e.currentTarget.style.background =
+                      "rgba(255,255,255,0.02)";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 >
