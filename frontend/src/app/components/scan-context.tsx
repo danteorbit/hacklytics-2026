@@ -125,11 +125,13 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const submitAllScans = useCallback(async () => {
-    const pendingScans = scans.filter((s) => s.status === "pending");
-    for (const scan of pendingScans) {
-      await submitScan(scan.id);
-    }
-  }, [scans, submitScan]);
+    // Read from the synchronous ref so we always see every scan
+    const pending = Array.from(scanMapRef.current.values()).filter(
+      (s) => s.status === "pending"
+    );
+    console.log(`[SnapPark] submitAllScans: ${pending.length} pending`);
+    await Promise.all(pending.map((s) => submitScan(s.id)));
+  }, [submitScan]);
 
   const clearScans = useCallback(() => {
     scanMapRef.current.clear();
