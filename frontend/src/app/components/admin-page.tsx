@@ -11,6 +11,7 @@ import {
   Upload,
   Plus,
   MapPin,
+  Download,
 } from "lucide-react";
 import { useScans } from "./scan-context";
 
@@ -28,6 +29,26 @@ export function AdminPage() {
   const totalImages = scans.length;
   const pendingCount = scans.filter((s) => s.status === "pending").length;
   const processedCount = scans.filter((s) => s.status === "processed").length;
+  const processedScans = scans.filter((s) => s.status === "processed");
+
+  const handleDownloadCsv = () => {
+    const rows = [["File Name", "Location", "Spots Detected"]];
+    for (const scan of processedScans) {
+      rows.push([
+        scan.fileName,
+        scan.location || "",
+        String(scan.totalSpots ?? ""),
+      ]);
+    }
+    const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "snappark_results.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -269,7 +290,7 @@ export function AdminPage() {
           ))}
         </motion.div>
 
-        {/* Placeholder metrics */}
+        {/* Detection Results CSV */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -280,42 +301,115 @@ export function AdminPage() {
             border: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          <h4
-            className="text-white mb-4"
-            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-          >
-            Performance Metrics
-          </h4>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Accuracy", value: "—" },
-              { label: "Precision", value: "—" },
-              { label: "Recall", value: "—" },
-              { label: "F1 Score", value: "—" },
-            ].map((metric) => (
-              <div
-                key={metric.label}
-                className="p-4 rounded-xl text-center"
+          <div className="flex items-center justify-between mb-4">
+            <h4
+              className="text-white"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Detection Results
+            </h4>
+            {processedScans.length > 0 && (
+              <button
+                onClick={handleDownloadCsv}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-200"
                 style={{
-                  background: "rgba(255,255,255,0.02)",
-                  border: "1px solid rgba(255,255,255,0.04)",
+                  background: "rgba(96,165,250,0.1)",
+                  border: "1px solid rgba(96,165,250,0.2)",
+                  color: "#60a5fa",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(96,165,250,0.15)";
+                  e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(96,165,250,0.1)";
+                  e.currentTarget.style.borderColor = "rgba(96,165,250,0.2)";
                 }}
               >
-                <p
-                  className="text-2xl text-white mb-1"
-                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-                >
-                  {metric.value}
-                </p>
-                <p className="text-xs" style={{ color: "#555" }}>
-                  {metric.label}
-                </p>
-              </div>
-            ))}
+                <Download className="w-3 h-3" />
+                Download CSV
+              </button>
+            )}
           </div>
-          <p className="text-xs mt-4 text-center" style={{ color: "#444" }}>
-            Connect the detection model to see real metrics
-          </p>
+
+          {processedScans.length > 0 ? (
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{ border: "1px solid rgba(255,255,255,0.04)" }}
+            >
+              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      }}
+                    >
+                      <th
+                        className="text-left px-4 py-2.5 text-xs font-medium"
+                        style={{ color: "#888" }}
+                      >
+                        File Name
+                      </th>
+                      <th
+                        className="text-left px-4 py-2.5 text-xs font-medium"
+                        style={{ color: "#888" }}
+                      >
+                        Location
+                      </th>
+                      <th
+                        className="text-right px-4 py-2.5 text-xs font-medium"
+                        style={{ color: "#888" }}
+                      >
+                        Spots Detected
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {processedScans.map((scan, i) => (
+                      <tr
+                        key={scan.id}
+                        style={{
+                          borderBottom:
+                            i < processedScans.length - 1
+                              ? "1px solid rgba(255,255,255,0.03)"
+                              : undefined,
+                        }}
+                      >
+                        <td
+                          className="px-4 py-2 text-white truncate max-w-[180px]"
+                          title={scan.fileName}
+                        >
+                          {scan.fileName}
+                        </td>
+                        <td
+                          className="px-4 py-2 truncate max-w-[140px]"
+                          style={{ color: "#888" }}
+                          title={scan.location}
+                        >
+                          {scan.location || "—"}
+                        </td>
+                        <td
+                          className="px-4 py-2 text-right tabular-nums"
+                          style={{
+                            color: "#4ade80",
+                            fontFamily: "'Space Grotesk', sans-serif",
+                          }}
+                        >
+                          {scan.totalSpots ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-center py-6" style={{ color: "#444" }}>
+              Process images to see detection results here
+            </p>
+          )}
         </motion.div>
       </div>
 
