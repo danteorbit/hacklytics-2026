@@ -144,7 +144,7 @@ def estimate_gsd(img_bgr, mask, expected_spots_hint=None, fallback=GSD_DEFAULT):
                 gsd = float(np.clip(gsd_candidate, GSD_MIN, GSD_MAX))
                 print(
                     f"[GSD] Estimated from line spacing: {spacing_px:.1f} px "
-                    f"→ GSD={gsd:.3f} ft/px"
+                    f"=> GSD={gsd:.3f} ft/px"
                 )
                 return gsd
 
@@ -199,8 +199,8 @@ def estimate_gsd(img_bgr, mask, expected_spots_hint=None, fallback=GSD_DEFAULT):
         print(
             f"[GSD] Area-based fallback: blob_narrow={narrow_px:.0f}px, "
             f"blob_wide={wide_px:.0f}px, n_rows={n_rows}, "
-            f"est_depth={est_narrow_ft:.0f}ft → GSD={gsd:.3f} ft/px "
-            f"(est_spots≈{mask_area_px * gsd * gsd / SQFT_PER_SPOT:.0f})"
+            f"est_depth={est_narrow_ft:.0f}ft => GSD={gsd:.3f} ft/px "
+            f"(est_spots~{mask_area_px * gsd * gsd / SQFT_PER_SPOT:.0f})"
         )
         return gsd
 
