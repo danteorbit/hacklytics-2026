@@ -3,3 +3,14 @@
 
 # model
 *.pt
+
+# frontend dependencies and build output
+frontend/src/node_modules/
+frontend/src/dist/
+
+# frontend environment variables
+frontend/src/.env
+frontend/src/.env.local
+
+# vite cache
+frontend/src/.vite/
