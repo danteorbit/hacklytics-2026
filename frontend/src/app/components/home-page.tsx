@@ -439,17 +439,37 @@ export function HomePage() {
                           background:
                             scan.status === "pending"
                               ? "rgba(250,204,21,0.15)"
-                              : "rgba(74,222,128,0.15)",
+                              : scan.status === "processing"
+                                ? "rgba(96,165,250,0.15)"
+                                : scan.status === "error"
+                                  ? "rgba(248,113,113,0.15)"
+                                  : "rgba(74,222,128,0.15)",
                           color:
-                            scan.status === "pending" ? "#facc15" : "#4ade80",
+                            scan.status === "pending"
+                              ? "#facc15"
+                              : scan.status === "processing"
+                                ? "#60a5fa"
+                                : scan.status === "error"
+                                  ? "#f87171"
+                                  : "#4ade80",
                           border:
                             scan.status === "pending"
                               ? "1px solid rgba(250,204,21,0.3)"
-                              : "1px solid rgba(74,222,128,0.3)",
+                              : scan.status === "processing"
+                                ? "1px solid rgba(96,165,250,0.3)"
+                                : scan.status === "error"
+                                  ? "1px solid rgba(248,113,113,0.3)"
+                                  : "1px solid rgba(74,222,128,0.3)",
                           backdropFilter: "blur(8px)",
                         }}
                       >
-                        {scan.status === "pending" ? "Pending" : "Processed"}
+                        {scan.status === "pending"
+                          ? "Pending"
+                          : scan.status === "processing"
+                            ? "Processing..."
+                            : scan.status === "error"
+                              ? "Error"
+                              : "Processed"}
                       </span>
                     </div>
 

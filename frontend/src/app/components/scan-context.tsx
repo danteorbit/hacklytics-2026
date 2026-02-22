@@ -63,9 +63,16 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const submitScan = useCallback(async (id: string) => {
-    // Mark as processing
+    // Mark as processing (both state and ref)
     setScans((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: "processing" as const } : s))
+      prev.map((s) => {
+        if (s.id === id) {
+          const updated = { ...s, status: "processing" as const };
+          scanMapRef.current.set(id, updated);
+          return updated;
+        }
+        return s;
+      })
     );
 
     // Look up from the synchronous ref (always has the latest data)
@@ -100,26 +107,34 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       console.log("[SnapPark] Backend returned:", result);
 
       setScans((prev) =>
-        prev.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                status: "processed" as const,
-                resultImage: result.result_image,
-                totalSpots: result.total_spots,
-                openSpots: result.total_spots,
-                error: null,
-              }
-            : s
-        )
+        prev.map((s) => {
+          if (s.id === id) {
+            const updated = {
+              ...s,
+              status: "processed" as const,
+              resultImage: result.result_image,
+              totalSpots: result.total_spots,
+              openSpots: result.total_spots,
+              error: null,
+            };
+            scanMapRef.current.set(id, updated);
+            return updated;
+          }
+          return s;
+        })
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("[SnapPark] submitScan error:", message);
       setScans((prev) =>
-        prev.map((s) =>
-          s.id === id ? { ...s, status: "error" as const, error: message } : s
-        )
+        prev.map((s) => {
+          if (s.id === id) {
+            const updated = { ...s, status: "error" as const, error: message };
+            scanMapRef.current.set(id, updated);
+            return updated;
+          }
+          return s;
+        })
       );
     }
   }, []);
