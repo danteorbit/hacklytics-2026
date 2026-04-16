@@ -1,4 +1,4 @@
-# Hacklytics-2026
+# Hacklytics-2026!
 ![alt text](image-2.png)
 
 **Track B — City-Wide Mapping:** Generate a comprehensive parking map for a city or metro area, identifying and counting parking across the entire geography. Think: "Show me every surface parking lot in Atlanta and how many spots each has."
